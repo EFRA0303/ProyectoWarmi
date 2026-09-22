@@ -3,6 +3,8 @@
 /node_modules
 /build
 tsconfig.build.tsbuildinfo
+*.tsbuildinfo
+/BACKEND_PROGRESS.md
 
 # Local database data
 /postgres-data
