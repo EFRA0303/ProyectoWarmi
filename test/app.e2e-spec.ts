@@ -9,6 +9,7 @@ import { JwtService } from '@nestjs/jwt';
 import { AppModule } from '../dist/app.module.js';
 import { databaseConfig } from '../dist/config/database.config.js';
 import { PostmanSchema1790000000000 } from '../dist/database/migrations/1790000000000-PostmanSchema.js';
+import { AccessAuditEvents1790000001000 } from '../dist/database/migrations/1790000001000-AccessAuditEvents.js';
 import { hashPassword } from '../dist/common/utils/password.js';
 import { Usuario } from '../dist/modules/usuarios/entities/usuario.entity.js';
 import { MailService } from '../dist/modules/auth/mail.service.js';
@@ -38,7 +39,7 @@ describe('Postman con PostgreSQL temporal, sin datos en la base de trabajo', () 
     db = new DataSource({
       ...databaseConfig(),
       database: name,
-      migrations: [PostmanSchema1790000000000],
+      migrations: [PostmanSchema1790000000000, AccessAuditEvents1790000001000],
     });
     await db.initialize();
     await db.runMigrations();
@@ -64,9 +65,17 @@ describe('Postman con PostgreSQL temporal, sin datos en la base de trabajo', () 
       'auditoria',
       'accesos-usuario',
     ]) {
-      for (const action of ['crear', 'leer', 'actualizar', 'asignar']) {
+      for (const action of [
+        'crear',
+        'leer',
+        'actualizar',
+        'asignar',
+        'eliminar',
+      ]) {
         const [perm] = await db.query(
-          'INSERT INTO permisos(permiso) VALUES ($1) RETURNING id_permiso',
+          `INSERT INTO permisos(permiso) VALUES ($1)
+           ON CONFLICT (permiso) DO UPDATE SET permiso = EXCLUDED.permiso
+           RETURNING id_permiso`,
           [resource + '.' + action],
         );
         await db.query(
@@ -114,6 +123,57 @@ describe('Postman con PostgreSQL temporal, sin datos en la base de trabajo', () 
       .expect(200);
     expect(me.body).not.toHaveProperty('contrasena_hash');
     expect(me.body).not.toHaveProperty('token_recuperacion_hash');
+  });
+
+  it('registra intentos, filtra historiales y cierra la sesion exacta', async () => {
+    const history = await api()
+      .get('/accesos-usuario')
+      .set('Authorization', auth())
+      .expect(200);
+    expect(history.body.total).toBeGreaterThanOrEqual(2);
+    expect(history.body.data[0]).toEqual(
+      expect.objectContaining({
+        id_acceso: expect.any(String),
+        identificador_intento: 'admin@test.local',
+        ip: expect.any(String),
+        user_agent: expect.any(String),
+        login_exitoso: expect.any(Boolean),
+      }),
+    );
+    const successful = await api()
+      .get('/accesos-usuario/exitosos')
+      .set('Authorization', auth())
+      .expect(200);
+    expect(
+      successful.body.data.every(
+        (row: { login_exitoso: boolean }) => row.login_exitoso,
+      ),
+    ).toBe(true);
+    const failed = await api()
+      .get('/accesos-usuario/fallidos')
+      .set('Authorization', auth())
+      .expect(200);
+    expect(
+      failed.body.data.every(
+        (row: { login_exitoso: boolean }) => !row.login_exitoso,
+      ),
+    ).toBe(true);
+    await api()
+      .get('/accesos-usuario/usuario/1')
+      .set('Authorization', auth())
+      .expect(200);
+    await api()
+      .get('/accesos-usuario/ultimos')
+      .set('Authorization', auth())
+      .expect(200);
+
+    await api().post('/auth/logout').set('Authorization', auth()).expect(200);
+    await api().get('/auth/me').set('Authorization', auth()).expect(401);
+    const login = await api()
+      .post('/auth/login')
+      .send({ correo_acceso: 'admin@test.local', contrasena: password })
+      .expect(200);
+    token = login.body.access_token;
   });
 
   it('crea personas con autor real y rechaza campos de autor enviados por el cliente', async () => {
@@ -337,7 +397,7 @@ describe('Postman con PostgreSQL temporal, sin datos en la base de trabajo', () 
     expect(down.body.updated_by).toBe(1);
   });
 
-  it('protege configuraciones obligatorias y permite consultar historiales vacios', async () => {
+  it('protege configuraciones obligatorias y permite consultar historiales', async () => {
     const config = await api()
       .post('/configuracion-auditoria')
       .set('Authorization', auth())
@@ -363,7 +423,8 @@ describe('Postman con PostgreSQL temporal, sin datos en la base de trabajo', () 
         .get('/' + resource)
         .set('Authorization', auth())
         .expect(200);
-      expect(history.body.total).toBe(0);
+      if (resource === 'auditoria') expect(history.body.total).toBe(0);
+      else expect(history.body.total).toBeGreaterThan(0);
       await api()
         .post('/' + resource)
         .set('Authorization', auth())
@@ -452,7 +513,7 @@ describe('Postman con PostgreSQL temporal, sin datos en la base de trabajo', () 
     expect(user.body.estado).toBe('BAJA');
   });
 
-  it('no expone DELETE ni implementa deleted_at o triggers', async () => {
+  it('solo expone DELETE para limpiar accesos y no implementa deleted_at o triggers', async () => {
     for (const resource of [
       'personas',
       'pacientes',
@@ -462,12 +523,21 @@ describe('Postman con PostgreSQL temporal, sin datos en la base de trabajo', () 
       'permisos',
       'configuracion-auditoria',
       'auditoria',
-      'accesos-usuario',
     ])
       await api()
         .delete('/' + resource + '/1')
         .set('Authorization', auth())
         .expect(404);
+    const byUser = await api()
+      .delete('/accesos-usuario/usuario/1')
+      .set('Authorization', auth())
+      .expect(200);
+    expect(byUser.body.eliminados).toBeGreaterThan(0);
+    const all = await api()
+      .delete('/accesos-usuario')
+      .set('Authorization', auth())
+      .expect(200);
+    expect(all.body.eliminados).toBeGreaterThanOrEqual(0);
     expect(
       await db.query(
         "SELECT trigger_name FROM information_schema.triggers WHERE trigger_schema = 'public'",

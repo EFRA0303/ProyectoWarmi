@@ -1,0 +1,11 @@
+export enum AuditEvent {
+  LOGIN_EXITOSO = 'LOGIN_EXITOSO',
+  LOGIN_FALLIDO = 'LOGIN_FALLIDO',
+  LOGOUT = 'LOGOUT',
+  USUARIO_BLOQUEADO = 'USUARIO_BLOQUEADO',
+  CAMBIO_CONTRASENA = 'CAMBIO_CONTRASENA',
+}
+
+export const MANDATORY_AUDIT_EVENTS = new Set<string>(
+  Object.values(AuditEvent),
+);

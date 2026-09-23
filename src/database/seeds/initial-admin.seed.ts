@@ -32,6 +32,7 @@ const permissions = [
   'configuracion-auditoria.actualizar',
   'auditoria.leer',
   'accesos-usuario.leer',
+  'accesos-usuario.eliminar',
 ];
 
 type IdRow = { id: number };

@@ -5,8 +5,10 @@ import {
   HttpCode,
   Inject,
   Post,
+  Req,
   UseGuards,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import { AuthGuard } from '@nestjs/passport';
 import { AuthService } from './auth.service.js';
 import { LoginDto } from './dto/login.dto.js';
@@ -16,6 +18,7 @@ import { ResetPasswordDto } from './dto/reset-password.dto.js';
 import { Public } from '../../common/decorators/public.decorator.js';
 import { CurrentUser } from '../../common/decorators/current-user.decorator.js';
 import type { JwtPayload } from '../../common/interfaces/jwt-payload.interface.js';
+import { requestMetadata } from '../../common/interfaces/request-metadata.interface.js';
 import {
   ApiBadRequestResponse,
   ApiBearerAuth,
@@ -48,6 +51,13 @@ export class AuthController {
   })
   login(@Body() _dto: LoginDto, @CurrentUser() user: JwtPayload) {
     return this.service.login(user);
+  }
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Cerrar la sesion actual' })
+  @Post('logout')
+  @HttpCode(200)
+  logout(@CurrentUser() user: JwtPayload) {
+    return this.service.logout(user);
   }
   @Public()
   @Post('forgot-password')
@@ -85,8 +95,12 @@ export class AuthController {
     },
   })
   @ApiBadRequestResponse({ description: 'El token es invalido o ha expirado.' })
-  resetPassword(@Body() dto: ResetPasswordDto) {
-    return this.service.resetPassword(dto.token, dto.nueva_contrasena);
+  resetPassword(@Body() dto: ResetPasswordDto, @Req() request: Request) {
+    return this.service.resetPassword(
+      dto.token,
+      dto.nueva_contrasena,
+      requestMetadata(request),
+    );
   }
   @ApiBearerAuth('access-token')
   @ApiOperation({ summary: 'Consultar la sesion actual' })
@@ -102,11 +116,16 @@ export class AuthController {
   })
   @Post('change-password')
   @HttpCode(200)
-  change(@Body() dto: ChangePasswordDto, @CurrentUser() user: JwtPayload) {
+  change(
+    @Body() dto: ChangePasswordDto,
+    @CurrentUser() user: JwtPayload,
+    @Req() request: Request,
+  ) {
     return this.service.changePassword(
       user.sub,
       dto.contrasena_actual,
       dto.nueva_contrasena,
+      requestMetadata(request),
     );
   }
 }

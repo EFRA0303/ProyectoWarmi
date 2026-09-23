@@ -122,9 +122,24 @@ created_at/updated_at en el Body. created_by/created_at se conservan al modifica
 En las asignaciones tambien se unificaron asignado_por/asignado_en con created_by/created_at.
 updated_at se inicializa al crear, aunque updated_by sea null.
 
-GET /auditoria y GET /accesos-usuario son solo consultas, con variantes /:id.
-No se implemento el registro automatico del historial, funciones SQL ni triggers.
-La configuracion de auditoria se almacena, pero aun no activa un capturador de eventos.
+Los accesos se registran automaticamente; no existe una ruta para crearlos o
+modificarlos manualmente. Cada intento conserva usuario o correo intentado, fecha,
+IP, navegador, resultado y motivo del fallo. POST /auth/logout completa fecha_logout
+y deja inválido el JWT de esa sesion.
+
+Consultas administrativas disponibles:
+
+- GET /accesos-usuario: historial general; admite id_usuario y login_exitoso.
+- GET /accesos-usuario/exitosos y /fallidos: historiales por resultado.
+- GET /accesos-usuario/usuario/:idUsuario: historial de un usuario.
+- GET /accesos-usuario/ultimos: ultimo acceso exitoso por usuario.
+- GET /accesos-usuario/:id: detalle de un registro.
+- DELETE /accesos-usuario: elimina todo el historial.
+- DELETE /accesos-usuario/usuario/:idUsuario: elimina el historial de un usuario.
+
+Los borrados requieren accesos-usuario.eliminar. LOGIN_EXITOSO, LOGIN_FALLIDO,
+LOGOUT, USUARIO_BLOQUEADO y CAMBIO_CONTRASENA son eventos obligatorios y no pueden
+deshabilitarse. Los demas eventos configurados respetan el campo habilitado.
 
 ## Orden de prueba
 
