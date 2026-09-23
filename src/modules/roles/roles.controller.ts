@@ -9,6 +9,7 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
+import { ApiBearerAuth } from '@nestjs/swagger';
 import { RolesService } from './roles.service.js';
 import { CreateRolDto } from './dto/create-rol.dto.js';
 import { UpdateRolDto } from './dto/update-rol.dto.js';
@@ -20,6 +21,7 @@ import { BajaDto } from '../../common/dto/baja.dto.js';
 import { AssignPermissionDto } from './dto/assign-permission.dto.js';
 import { AssignmentsService } from '../../common/utils/assignments.service.js';
 
+@ApiBearerAuth('access-token')
 @Controller('roles')
 export class RolesController {
   constructor(

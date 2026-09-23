@@ -6,7 +6,8 @@ La base configurada estaba vacia al revisar su esquema. No se crearon tablas
 ni se insertaron cuentas, roles o permisos en ella. No hay seeds automaticos.
 
 1. Revisa .env usando .env.example como referencia: DB_HOST, DB_PORT,
-   DB_USERNAME, DB_PASSWORD, DB_DATABASE y un JWT_SECRET aleatorio de 32 o mas caracteres.
+   DB_USERNAME, DB_PASSWORD, DB_DATABASE, un JWT_SECRET aleatorio de 32 o mas
+   caracteres y la configuracion MAIL_*.
 2. Cuando decidas crear las tablas, ejecuta `pnpm run db:migrate`.
    La migracion prepara exclusivamente el esquema y el registro de migraciones.
    Es para una base vacia: no la ejecutes sobre tablas creadas manualmente sin
@@ -14,6 +15,14 @@ ni se insertaron cuentas, roles o permisos en ella. No hay seeds automaticos.
 3. Carga manualmente tus registros iniciales, como se explica a continuacion.
 4. Ejecuta `pnpm run start:dev`. La URL predeterminada es http://localhost:3000.
 5. Importa `postman/Warmi.postman_collection.json` en Postman.
+
+Para probar correos, inicia Mailpit con `docker compose up -d mailpit`. El servidor
+SMTP queda en localhost:1025 y la bandeja web en http://localhost:8025.
+
+Tambien puedes probar la API desde Swagger UI en http://localhost:3000/docs.
+Ejecuta primero `POST /auth/login`, copia `access_token` y pulsa **Authorize** para
+probar las rutas protegidas. En la recuperacion de contrasena, copia desde Mailpit
+el token original del enlace; el hash guardado en la base de datos no es utilizable.
 
 ## Cuenta cargada manualmente
 
@@ -68,19 +77,26 @@ GET /auth/me comprueba la sesion. No se ofrecen registros publicos de cuentas.
 POST /auth/change-password recibe contrasena_actual y nueva_contrasena.
 Despues debes iniciar sesion nuevamente: el JWT anterior queda invalidado.
 Cinco intentos fallidos bloquean el acceso durante 15 minutos.
-Forgot/reset password no estan implementados en esta entrega; sus DTOs son preparacion.
+
+POST /auth/forgot-password recibe `correo_acceso`. La respuesta siempre es generica,
+exista o no la cuenta. Abre el mensaje en Mailpit, copia el token de 64 caracteres
+del enlace y guardalo en la variable `recovery_token` de Postman.
+
+POST /auth/reset-password recibe `token` y `nueva_contrasena`. El token dura 15
+minutos por defecto, se almacena hasheado, solo funciona una vez e invalida las
+sesiones anteriores al restablecer la contrasena.
 
 ## Rutas
 
-| Recurso | Crear | Consultar | Actualizar | Baja |
-| --- | --- | --- | --- | --- |
-| Personas | POST /personas | GET /personas y /personas/:id | PATCH /personas/:id | No tiene estado en el modelo |
-| Pacientes | POST /pacientes | GET /pacientes y /pacientes/:id | PATCH /pacientes/:id | PATCH /pacientes/:id/baja |
-| Usuarios | POST /usuarios | GET /usuarios y /usuarios/:id | PATCH /usuarios/:id | PATCH /usuarios/:id/baja |
-| Personal | POST /personal | GET /personal y /personal/:id | PATCH /personal/:id | PATCH /personal/:id/baja |
-| Roles | POST /roles | GET /roles y /roles/:id | PATCH /roles/:id | PATCH /roles/:id/baja |
-| Permisos | POST /permisos | GET /permisos y /permisos/:id | PATCH /permisos/:id | PATCH /permisos/:id/baja |
-| Configuracion | POST /configuracion-auditoria | GET /configuracion-auditoria y /configuracion-auditoria/:id | PATCH /configuracion-auditoria/:id | Usa habilitado, no estado |
+| Recurso       | Crear                         | Consultar                                                   | Actualizar                         | Baja                         |
+| ------------- | ----------------------------- | ----------------------------------------------------------- | ---------------------------------- | ---------------------------- |
+| Personas      | POST /personas                | GET /personas y /personas/:id                               | PATCH /personas/:id                | No tiene estado en el modelo |
+| Pacientes     | POST /pacientes               | GET /pacientes y /pacientes/:id                             | PATCH /pacientes/:id               | PATCH /pacientes/:id/baja    |
+| Usuarios      | POST /usuarios                | GET /usuarios y /usuarios/:id                               | PATCH /usuarios/:id                | PATCH /usuarios/:id/baja     |
+| Personal      | POST /personal                | GET /personal y /personal/:id                               | PATCH /personal/:id                | PATCH /personal/:id/baja     |
+| Roles         | POST /roles                   | GET /roles y /roles/:id                                     | PATCH /roles/:id                   | PATCH /roles/:id/baja        |
+| Permisos      | POST /permisos                | GET /permisos y /permisos/:id                               | PATCH /permisos/:id                | PATCH /permisos/:id/baja     |
+| Configuracion | POST /configuracion-auditoria | GET /configuracion-auditoria y /configuracion-auditoria/:id | PATCH /configuracion-auditoria/:id | Usa habilitado, no estado    |
 
 Los listados aceptan page y limit (maximo 100). Los que tienen estado permiten
 filtrar ?estado=ACTIVO o ?estado=BAJA. Por defecto se listan ambos estados.

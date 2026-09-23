@@ -9,6 +9,7 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
+import { ApiBearerAuth } from '@nestjs/swagger';
 import { PermisosService } from './permisos.service.js';
 import { CreatePermisoDto } from './dto/create-permiso.dto.js';
 import { UpdatePermisoDto } from './dto/update-permiso.dto.js';
@@ -20,6 +21,7 @@ import { BajaDto } from '../../common/dto/baja.dto.js';
 import { AssignUserPermissionDto } from './dto/assign-user-permission.dto.js';
 import { AssignmentsService } from '../../common/utils/assignments.service.js';
 
+@ApiBearerAuth('access-token')
 @Controller('permisos')
 export class PermisosController {
   constructor(

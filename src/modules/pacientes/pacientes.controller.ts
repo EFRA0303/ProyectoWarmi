@@ -9,6 +9,7 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
+import { ApiBearerAuth } from '@nestjs/swagger';
 import { PacientesService } from './pacientes.service.js';
 import { CreatePacienteDto } from './dto/create-paciente.dto.js';
 import { UpdatePacienteDto } from './dto/update-paciente.dto.js';
@@ -18,6 +19,7 @@ import { Permissions } from '../../common/decorators/permissions.decorator.js';
 import type { JwtPayload } from '../../common/interfaces/jwt-payload.interface.js';
 import { BajaDto } from '../../common/dto/baja.dto.js';
 
+@ApiBearerAuth('access-token')
 @Controller('pacientes')
 export class PacientesController {
   constructor(

@@ -9,6 +9,7 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
+import { ApiBearerAuth } from '@nestjs/swagger';
 import { ConfiguracionAuditoriaService } from './configuracion-auditoria.service.js';
 import { CreateConfiguracionAuditoriaDto } from './dto/create-configuracion-auditoria.dto.js';
 import { UpdateConfiguracionAuditoriaDto } from './dto/update-configuracion-auditoria.dto.js';
@@ -17,6 +18,7 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator.js';
 import { Permissions } from '../../common/decorators/permissions.decorator.js';
 import type { JwtPayload } from '../../common/interfaces/jwt-payload.interface.js';
 
+@ApiBearerAuth('access-token')
 @Controller('configuracion-auditoria')
 export class ConfiguracionAuditoriaController {
   constructor(

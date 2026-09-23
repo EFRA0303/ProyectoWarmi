@@ -84,6 +84,11 @@
       "key": "nueva_contrasena",
       "value": "",
       "type": "string"
+    },
+    {
+      "key": "recovery_token",
+      "value": "",
+      "type": "string"
     }
   ],
   "item": [
@@ -134,6 +139,78 @@
             "method": "GET",
             "header": [],
             "url": "{{base_url}}/auth/me"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST - Recuperar contrasena",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/auth/forgot-password",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"correo_acceso\": \"{{correo}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST - Restablecer contrasena",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/auth/reset-password",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"{{recovery_token}}\",\n  \"nueva_contrasena\": \"{{nueva_contrasena}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
           },
           "event": [
             {

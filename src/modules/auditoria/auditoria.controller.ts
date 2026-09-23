@@ -6,10 +6,12 @@ import {
   Param,
   BadRequestException,
 } from '@nestjs/common';
+import { ApiBearerAuth } from '@nestjs/swagger';
 import { AuditoriaService } from './auditoria.service.js';
 import { Permissions } from '../../common/decorators/permissions.decorator.js';
 import { PaginationDto } from '../../common/dto/pagination.dto.js';
 
+@ApiBearerAuth('access-token')
 @Controller('auditoria')
 @Permissions('auditoria.leer')
 export class AuditoriaController {

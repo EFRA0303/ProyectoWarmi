@@ -11,6 +11,7 @@ import { databaseConfig } from '../dist/config/database.config.js';
 import { PostmanSchema1790000000000 } from '../dist/database/migrations/1790000000000-PostmanSchema.js';
 import { hashPassword } from '../dist/common/utils/password.js';
 import { Usuario } from '../dist/modules/usuarios/entities/usuario.entity.js';
+import { MailService } from '../dist/modules/auth/mail.service.js';
 
 describe('Postman con PostgreSQL temporal, sin datos en la base de trabajo', () => {
   let app: INestApplication<App>;
@@ -25,6 +26,7 @@ describe('Postman con PostgreSQL temporal, sin datos en la base de trabajo', () 
   let userId: number;
   let roleId: number;
   let configId: number;
+  let resetToken = '';
   const api = () => request(app.getHttpServer());
   const auth = () => 'Bearer ' + token;
 
@@ -76,6 +78,12 @@ describe('Postman con PostgreSQL temporal, sin datos en la base de trabajo', () 
     const fixture = await Test.createTestingModule({ imports: [AppModule] })
       .overrideProvider(DataSource)
       .useValue(db)
+      .overrideProvider(MailService)
+      .useValue({
+        sendPasswordReset: async (_recipient: string, value: string) => {
+          resetToken = value;
+        },
+      })
       .compile();
     app = fixture.createNestApplication();
     app.useGlobalPipes(
@@ -470,6 +478,78 @@ describe('Postman con PostgreSQL temporal, sin datos en la base de trabajo', () 
         "SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND column_name = 'deleted_at'",
       ),
     ).toHaveLength(0);
+  });
+
+  it('recupera la contrasena con token temporal, hasheado y de un solo uso', async () => {
+    const genericMessage =
+      'Si la cuenta existe, recibiras un correo con las instrucciones.';
+    const missing = await api()
+      .post('/auth/forgot-password')
+      .send({ correo_acceso: 'no-existe@test.local' })
+      .expect(200);
+    expect(missing.body.message).toBe(genericMessage);
+    expect(resetToken).toBe('');
+
+    const requested = await api()
+      .post('/auth/forgot-password')
+      .send({ correo_acceso: 'ADMIN@test.local' })
+      .expect(200);
+    expect(requested.body.message).toBe(genericMessage);
+    expect(resetToken).toMatch(/^[0-9a-f]{64}$/);
+    const firstToken = resetToken;
+    const [stored] = await db.query(
+      'SELECT token_recuperacion_hash, token_recuperacion_expira FROM usuarios WHERE id_usuario = 1',
+    );
+    expect(stored.token_recuperacion_hash).toMatch(/^[0-9a-f]{64}$/);
+    expect(stored.token_recuperacion_hash).not.toBe(firstToken);
+    expect(
+      new Date(stored.token_recuperacion_expira).getTime(),
+    ).toBeGreaterThan(Date.now());
+
+    await db.query(
+      'UPDATE usuarios SET token_recuperacion_expira = $1 WHERE id_usuario = 1',
+      [new Date(Date.now() - 1000)],
+    );
+    await api()
+      .post('/auth/reset-password')
+      .send({
+        token: firstToken,
+        nueva_contrasena: 'Recuperada-segura-2026!',
+      })
+      .expect(400);
+
+    await api()
+      .post('/auth/forgot-password')
+      .send({ correo_acceso: 'admin@test.local' })
+      .expect(200);
+    expect(resetToken).not.toBe(firstToken);
+    const validToken = resetToken;
+    await api()
+      .post('/auth/reset-password')
+      .send({
+        token: validToken.toUpperCase(),
+        nueva_contrasena: 'Recuperada-segura-2026!',
+      })
+      .expect(200);
+    await api()
+      .post('/auth/reset-password')
+      .send({
+        token: validToken,
+        nueva_contrasena: 'No-debe-aplicarse-2026!',
+      })
+      .expect(400);
+    await api().get('/auth/me').set('Authorization', auth()).expect(401);
+    await api()
+      .post('/auth/login')
+      .send({ correo_acceso: 'admin@test.local', contrasena: password })
+      .expect(401);
+    await api()
+      .post('/auth/login')
+      .send({
+        correo_acceso: 'admin@test.local',
+        contrasena: 'Recuperada-segura-2026!',
+      })
+      .expect(200);
   });
 
   afterAll(async () => {

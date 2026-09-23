@@ -6,10 +6,12 @@ import {
   Param,
   BadRequestException,
 } from '@nestjs/common';
+import { ApiBearerAuth } from '@nestjs/swagger';
 import { AccesosUsuarioService } from './accesos-usuario.service.js';
 import { Permissions } from '../../common/decorators/permissions.decorator.js';
 import { PaginationDto } from '../../common/dto/pagination.dto.js';
 
+@ApiBearerAuth('access-token')
 @Controller('accesos-usuario')
 @Permissions('accesos-usuario.leer')
 export class AccesosUsuarioController {

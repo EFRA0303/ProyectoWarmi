@@ -9,6 +9,7 @@ import { LocalStrategy } from './strategies/local.strategy.js';
 import { JwtStrategy } from './strategies/jwt.strategy.js';
 import { JwtAuthGuard } from './guards/jwt-auth.guard.js';
 import { PermissionsGuard } from './guards/permissions.guard.js';
+import { MailService } from './mail.service.js';
 
 @Module({
   imports: [PassportModule, JwtModule.registerAsync({ useFactory: jwtConfig })],
@@ -17,6 +18,7 @@ import { PermissionsGuard } from './guards/permissions.guard.js';
     AuthService,
     LocalStrategy,
     JwtStrategy,
+    MailService,
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: PermissionsGuard },
   ],

@@ -1,4 +1,11 @@
-import { Injectable, Inject, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Inject,
+  Logger,
+  UnauthorizedException,
+} from '@nestjs/common';
+import { createHash, randomBytes } from 'node:crypto';
 import { DataSource } from 'typeorm';
 import { JwtService } from '@nestjs/jwt';
 import { Usuario } from '../usuarios/entities/usuario.entity.js';
@@ -6,12 +13,17 @@ import { EstadoUsuario } from '../../common/enums/estado-usuario.enum.js';
 import { EstadoGeneral } from '../../common/enums/estado-general.enum.js';
 import { hashPassword, verifyPassword } from '../../common/utils/password.js';
 import type { JwtPayload } from '../../common/interfaces/jwt-payload.interface.js';
+import { MailService } from './mail.service.js';
+import { mailConfig } from '../../config/mail.config.js';
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     @Inject(DataSource) private readonly db: DataSource,
     @Inject(JwtService) private readonly jwt: JwtService,
+    @Inject(MailService) private readonly mail: MailService,
   ) {}
   async validateCredentials(
     email: string,
@@ -102,6 +114,80 @@ export class AuthService {
       token_type: 'Bearer',
     };
   }
+  async forgotPassword(email: string) {
+    const normalizedEmail = email.toLowerCase();
+    const token = randomBytes(32).toString('hex');
+    const tokenHash = this.hashResetToken(token);
+    const expiresAt = new Date(
+      Date.now() + mailConfig().resetExpiresMinutes * 60_000,
+    );
+    const repo = this.db.getRepository(Usuario);
+    const user = await repo
+      .createQueryBuilder('u')
+      .where('LOWER(u.correo_acceso) = :email', { email: normalizedEmail })
+      .andWhere('u.estado = :estado', { estado: EstadoUsuario.ACTIVO })
+      .getOne();
+
+    if (user) {
+      await repo.update(user.id_usuario, {
+        token_recuperacion_hash: tokenHash,
+        token_recuperacion_expira: expiresAt,
+      });
+      try {
+        await this.mail.sendPasswordReset(user.correo_acceso, token);
+      } catch (error) {
+        await repo
+          .createQueryBuilder()
+          .update(Usuario)
+          .set({
+            token_recuperacion_hash: null,
+            token_recuperacion_expira: null,
+          })
+          .where('id_usuario = :id', { id: user.id_usuario })
+          .andWhere('token_recuperacion_hash = :tokenHash', { tokenHash })
+          .execute();
+        this.logger.error(
+          `No se pudo enviar el correo de recuperacion a ${normalizedEmail}`,
+          error instanceof Error ? error.stack : String(error),
+        );
+      }
+    }
+
+    return {
+      message:
+        'Si la cuenta existe, recibiras un correo con las instrucciones.',
+    };
+  }
+  async resetPassword(token: string, next: string) {
+    const tokenHash = this.hashResetToken(token.toLowerCase());
+    await this.db.transaction(async (manager) => {
+      const repo = manager.getRepository(Usuario);
+      const user = await repo
+        .createQueryBuilder('u')
+        .addSelect('u.token_recuperacion_hash')
+        .where('u.token_recuperacion_hash = :tokenHash', { tokenHash })
+        .andWhere('u.token_recuperacion_expira > :now', { now: new Date() })
+        .andWhere('u.estado = :estado', { estado: EstadoUsuario.ACTIVO })
+        .setLock('pessimistic_write')
+        .getOne();
+      if (!user)
+        throw new BadRequestException(
+          'El token de recuperacion es invalido o ha expirado',
+        );
+      await repo.update(user.id_usuario, {
+        contrasena_hash: await hashPassword(next),
+        intentos_fallidos: 0,
+        bloqueado_hasta: null,
+        cambio_contrasena_en: new Date(
+          Math.max(Date.now(), (user.cambio_contrasena_en?.getTime() ?? 0) + 1),
+        ),
+        token_recuperacion_hash: null,
+        token_recuperacion_expira: null,
+        updated_by: user.id_usuario,
+      });
+    });
+    return { message: 'Contrasena restablecida. Ya puedes iniciar sesion.' };
+  }
   async profile(id: number) {
     return this.db.getRepository(Usuario).findOneOrFail({
       where: { id_usuario: id },
@@ -130,5 +216,9 @@ export class AuthService {
       });
     });
     return { message: 'Contrasena actualizada. Inicia sesion nuevamente.' };
+  }
+
+  private hashResetToken(token: string) {
+    return createHash('sha256').update(token).digest('hex');
   }
 }
