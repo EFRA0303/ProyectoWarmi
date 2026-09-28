@@ -64,6 +64,7 @@ export class AccesosUsuarioController {
 
   @Get(':id')
   @Permissions('accesos-usuario.leer')
+  @ApiOperation({ summary: 'Consultar un registro de acceso por ID' })
   findOne(@Param('id') id: string) {
     this.validateBigintId(id);
     return this.service.findOne(id);

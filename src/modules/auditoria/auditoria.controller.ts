@@ -6,7 +6,7 @@ import {
   Param,
   BadRequestException,
 } from '@nestjs/common';
-import { ApiBearerAuth } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { AuditoriaService } from './auditoria.service.js';
 import { Permissions } from '../../common/decorators/permissions.decorator.js';
 import { PaginationDto } from '../../common/dto/pagination.dto.js';
@@ -18,10 +18,14 @@ export class AuditoriaController {
   constructor(
     @Inject(AuditoriaService) private readonly service: AuditoriaService,
   ) {}
-  @Get() findAll(@Query() query: PaginationDto) {
+  @Get()
+  @ApiOperation({ summary: 'Listar eventos de auditoría' })
+  findAll(@Query() query: PaginationDto) {
     return this.service.findAll(query);
   }
-  @Get(':id') findOne(@Param('id') id: string) {
+  @Get(':id')
+  @ApiOperation({ summary: 'Consultar un evento de auditoría por ID' })
+  findOne(@Param('id') id: string) {
     if (
       !/^[1-9][0-9]*$/.test(id) ||
       id.length > 19 ||

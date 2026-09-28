@@ -69,6 +69,7 @@ export class CatalogoController {
 
   @Get('areas')
   @Permissions('catalogo.leer')
+  @ApiOperation({ summary: 'Listar áreas del catálogo' })
   @ApiOkResponse({ schema: paginatedSchema(getSchemaPath(Area)) })
   findAreas(@Query() query: CatalogoQueryDto) {
     return this.service.findAreas(query);
@@ -76,12 +77,14 @@ export class CatalogoController {
 
   @Get('areas/:id')
   @Permissions('catalogo.leer')
+  @ApiOperation({ summary: 'Consultar un área por ID' })
   findArea(@Param('id', ParseIntPipe) id: number) {
     return this.service.findArea(id);
   }
 
   @Patch('areas/:id')
   @Permissions('catalogo.actualizar')
+  @ApiOperation({ summary: 'Actualizar un área' })
   updateArea(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateAreaDto,
@@ -91,12 +94,14 @@ export class CatalogoController {
 
   @Post('categorias')
   @Permissions('catalogo.crear')
+  @ApiOperation({ summary: 'Crear una categoría de servicios' })
   createCategory(@Body() dto: CreateCategoriaServicioDto) {
     return this.service.createCategory(dto);
   }
 
   @Get('categorias')
   @Permissions('catalogo.leer')
+  @ApiOperation({ summary: 'Listar categorías de servicios' })
   @ApiOkResponse({ schema: paginatedSchema(getSchemaPath(CategoriaServicio)) })
   findCategories(@Query() query: CategoriaQueryDto) {
     return this.service.findCategories(query);
@@ -104,12 +109,14 @@ export class CatalogoController {
 
   @Get('categorias/:id')
   @Permissions('catalogo.leer')
+  @ApiOperation({ summary: 'Consultar una categoría por ID' })
   findCategory(@Param('id', ParseIntPipe) id: number) {
     return this.service.findCategory(id);
   }
 
   @Patch('categorias/:id')
   @Permissions('catalogo.actualizar')
+  @ApiOperation({ summary: 'Actualizar una categoría de servicios' })
   updateCategory(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateCategoriaServicioDto,
@@ -119,12 +126,14 @@ export class CatalogoController {
 
   @Post('servicios')
   @Permissions('catalogo.crear')
+  @ApiOperation({ summary: 'Crear un servicio' })
   createService(@Body() dto: CreateServicioDto) {
     return this.service.createService(dto);
   }
 
   @Get('servicios')
   @Permissions('catalogo.leer')
+  @ApiOperation({ summary: 'Listar servicios del catálogo' })
   @ApiOkResponse({ schema: paginatedSchema(getSchemaPath(Servicio)) })
   findServices(@Query() query: ServicioQueryDto) {
     return this.service.findServices(query);
@@ -132,12 +141,14 @@ export class CatalogoController {
 
   @Get('servicios/:id')
   @Permissions('catalogo.leer')
+  @ApiOperation({ summary: 'Consultar un servicio por ID' })
   findService(@Param('id', ParseIntPipe) id: number) {
     return this.service.findService(id);
   }
 
   @Patch('servicios/:id')
   @Permissions('catalogo.actualizar')
+  @ApiOperation({ summary: 'Actualizar un servicio' })
   updateService(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateServicioDto,
@@ -147,12 +158,14 @@ export class CatalogoController {
 
   @Post('tipos-medida')
   @Permissions('catalogo.crear')
+  @ApiOperation({ summary: 'Crear un tipo de medida clínica' })
   createMeasureType(@Body() dto: CreateTipoMedidaDto) {
     return this.service.createMeasureType(dto);
   }
 
   @Get('tipos-medida')
   @Permissions('catalogo.leer')
+  @ApiOperation({ summary: 'Listar tipos de medida clínica' })
   @ApiOkResponse({ schema: paginatedSchema(getSchemaPath(TipoMedida)) })
   findMeasureTypes(@Query() query: CatalogoQueryDto) {
     return this.service.findMeasureTypes(query);
@@ -160,12 +173,14 @@ export class CatalogoController {
 
   @Get('tipos-medida/:id')
   @Permissions('catalogo.leer')
+  @ApiOperation({ summary: 'Consultar un tipo de medida por ID' })
   findMeasureType(@Param('id', ParseIntPipe) id: number) {
     return this.service.findMeasureType(id);
   }
 
   @Patch('tipos-medida/:id')
   @Permissions('catalogo.actualizar')
+  @ApiOperation({ summary: 'Actualizar un tipo de medida clínica' })
   updateMeasureType(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateTipoMedidaDto,

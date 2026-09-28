@@ -9,7 +9,7 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
-import { ApiBearerAuth } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { PersonalService } from './personal.service.js';
 import { CreatePersonalDto } from './dto/create-personal.dto.js';
 import { UpdatePersonalDto } from './dto/update-personal.dto.js';
@@ -28,21 +28,28 @@ export class PersonalController {
 
   @Post()
   @Permissions('personal.crear')
+  @ApiOperation({
+    summary: 'Registrar un miembro del personal',
+    description: 'Crea el registro laboral asociado a una persona.',
+  })
   create(@Body() dto: CreatePersonalDto, @CurrentUser() user: JwtPayload) {
     return this.service.create(dto, user.sub);
   }
   @Get()
   @Permissions('personal.leer')
+  @ApiOperation({ summary: 'Listar personal' })
   findAll(@Query() query: PaginationDto) {
     return this.service.findAll(query);
   }
   @Get(':id')
   @Permissions('personal.leer')
+  @ApiOperation({ summary: 'Consultar un miembro del personal por ID' })
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.service.findOne(id);
   }
   @Patch(':id')
   @Permissions('personal.actualizar')
+  @ApiOperation({ summary: 'Actualizar los datos del personal' })
   update(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdatePersonalDto,
@@ -52,6 +59,11 @@ export class PersonalController {
   }
   @Patch(':id/baja')
   @Permissions('personal.actualizar')
+  @ApiOperation({
+    summary: 'Dar de baja o reactivar al personal',
+    description:
+      'Cambia su estado y registra el motivo cuando se efectúa la baja.',
+  })
   deactivate(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: BajaDto,

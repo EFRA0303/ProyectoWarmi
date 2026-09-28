@@ -9,7 +9,7 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
-import { ApiBearerAuth } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { UsuariosService } from './usuarios.service.js';
 import { CreateUsuarioDto } from './dto/create-usuario.dto.js';
 import { UpdateUsuarioDto } from './dto/update-usuario.dto.js';
@@ -28,21 +28,25 @@ export class UsuariosController {
 
   @Post()
   @Permissions('usuarios.crear', 'roles.asignar')
+  @ApiOperation({ summary: 'Crear un usuario y asignarle un rol' })
   create(@Body() dto: CreateUsuarioDto, @CurrentUser() user: JwtPayload) {
     return this.service.register(dto, user.sub);
   }
   @Get()
   @Permissions('usuarios.leer')
+  @ApiOperation({ summary: 'Listar usuarios' })
   findAll(@Query() query: PaginationDto) {
     return this.service.findAll(query);
   }
   @Get(':id')
   @Permissions('usuarios.leer')
+  @ApiOperation({ summary: 'Consultar un usuario por ID' })
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.service.findOne(id);
   }
   @Patch(':id')
   @Permissions('usuarios.actualizar')
+  @ApiOperation({ summary: 'Actualizar los datos de un usuario' })
   update(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateUsuarioDto,
@@ -53,6 +57,11 @@ export class UsuariosController {
   }
   @Patch(':id/baja')
   @Permissions('usuarios.actualizar')
+  @ApiOperation({
+    summary: 'Dar de baja o reactivar un usuario',
+    description:
+      'Cambia el estado de acceso del usuario y registra el motivo cuando se da de baja.',
+  })
   deactivate(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: BajaDto,

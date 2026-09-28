@@ -35,6 +35,10 @@ export class HistorialesController {
 
   @Post()
   @Permissions('historiales.crear')
+  @ApiOperation({
+    summary: 'Abrir el historial de un paciente',
+    description: 'Crea un único historial clínico para el paciente indicado.',
+  })
   create(@Body() dto: CreateHistorialDto) {
     return this.service.create(dto);
   }
@@ -64,12 +68,18 @@ export class HistorialesController {
 
   @Get(':id')
   @Permissions('historiales.leer')
+  @ApiOperation({ summary: 'Consultar un historial por ID' })
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.service.findOne(id);
   }
 
   @Patch(':id')
   @Permissions('historiales.actualizar')
+  @ApiOperation({
+    summary: 'Actualizar o cambiar el estado de un historial',
+    description:
+      'Actualiza sus observaciones generales o permite cerrarlo y reabrirlo según el estado solicitado.',
+  })
   update(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateHistorialDto,

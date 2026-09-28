@@ -13,6 +13,7 @@ import {
   ApiBearerAuth,
   ApiExtraModels,
   ApiOkResponse,
+  ApiOperation,
   ApiTags,
 } from '@nestjs/swagger';
 import { Permissions } from '../../common/decorators/permissions.decorator.js';
@@ -37,44 +38,57 @@ export class EmpresaController {
   constructor(
     @Inject(EmpresaService) private readonly service: EmpresaService,
   ) {}
-  @Post() @Permissions('empresa.crear') create(@Body() dto: CreateEmpresaDto) {
+  @Post()
+  @Permissions('empresa.crear')
+  @ApiOperation({ summary: 'Registrar una empresa' })
+  create(@Body() dto: CreateEmpresaDto) {
     return this.service.create(dto);
   }
   @Get()
   @Permissions('empresa.leer')
+  @ApiOperation({ summary: 'Listar empresas registradas' })
   @ApiOkResponse({ schema: paginatedSchema(Empresa) })
   list(@Query() q: DomainQueryDto) {
     return this.service.list(q);
   }
-  @Get(':id') @Permissions('empresa.leer') one(
-    @Param('id', ParseIntPipe) id: number,
-  ) {
+  @Get(':id')
+  @Permissions('empresa.leer')
+  @ApiOperation({ summary: 'Consultar una empresa por ID' })
+  one(@Param('id', ParseIntPipe) id: number) {
     return this.service.one(id);
   }
-  @Patch(':id') @Permissions('empresa.actualizar') update(
-    @Param('id', ParseIntPipe) id: number,
-    @Body() dto: UpdateEmpresaDto,
-  ) {
+  @Patch(':id')
+  @Permissions('empresa.actualizar')
+  @ApiOperation({ summary: 'Actualizar los datos de una empresa' })
+  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateEmpresaDto) {
     return this.service.update(id, dto);
   }
   @Post('configuraciones-documentos')
   @Permissions('empresa.crear')
+  @ApiOperation({
+    summary: 'Crear una configuración de documentos',
+    description:
+      'Define la numeración y los datos usados para emitir documentos de una empresa.',
+  })
   createConfig(@Body() dto: CreateConfiguracionDocumentoDto) {
     return this.service.createConfig(dto);
   }
   @Get('configuraciones-documentos/listar')
   @Permissions('empresa.leer')
+  @ApiOperation({ summary: 'Listar configuraciones de documentos' })
   @ApiOkResponse({ schema: paginatedSchema(ConfiguracionDocumento) })
   listConfigs(@Query() q: DomainQueryDto) {
     return this.service.listConfigs(q);
   }
-  @Get('configuraciones-documentos/:id') @Permissions('empresa.leer') oneConfig(
-    @Param('id', ParseIntPipe) id: number,
-  ) {
+  @Get('configuraciones-documentos/:id')
+  @Permissions('empresa.leer')
+  @ApiOperation({ summary: 'Consultar una configuración por ID' })
+  oneConfig(@Param('id', ParseIntPipe) id: number) {
     return this.service.oneConfig(id);
   }
   @Patch('configuraciones-documentos/:id')
   @Permissions('empresa.actualizar')
+  @ApiOperation({ summary: 'Actualizar una configuración de documentos' })
   updateConfig(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateConfiguracionDocumentoDto,

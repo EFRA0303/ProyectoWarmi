@@ -9,7 +9,7 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
-import { ApiBearerAuth } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { ConfiguracionAuditoriaService } from './configuracion-auditoria.service.js';
 import { CreateConfiguracionAuditoriaDto } from './dto/create-configuracion-auditoria.dto.js';
 import { UpdateConfiguracionAuditoriaDto } from './dto/update-configuracion-auditoria.dto.js';
@@ -28,6 +28,7 @@ export class ConfiguracionAuditoriaController {
 
   @Post()
   @Permissions('configuracion-auditoria.crear')
+  @ApiOperation({ summary: 'Crear una regla de configuración de auditoría' })
   create(
     @Body() dto: CreateConfiguracionAuditoriaDto,
     @CurrentUser() user: JwtPayload,
@@ -36,16 +37,19 @@ export class ConfiguracionAuditoriaController {
   }
   @Get()
   @Permissions('configuracion-auditoria.leer')
+  @ApiOperation({ summary: 'Listar configuraciones de auditoría' })
   findAll(@Query() query: PaginationDto) {
     return this.service.findAll(query);
   }
   @Get(':id')
   @Permissions('configuracion-auditoria.leer')
+  @ApiOperation({ summary: 'Consultar una configuración de auditoría por ID' })
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.service.findOne(id);
   }
   @Patch(':id')
   @Permissions('configuracion-auditoria.actualizar')
+  @ApiOperation({ summary: 'Actualizar una configuración de auditoría' })
   update(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateConfiguracionAuditoriaDto,

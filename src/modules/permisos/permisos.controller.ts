@@ -9,7 +9,7 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
-import { ApiBearerAuth } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { PermisosService } from './permisos.service.js';
 import { CreatePermisoDto } from './dto/create-permiso.dto.js';
 import { UpdatePermisoDto } from './dto/update-permiso.dto.js';
@@ -32,6 +32,11 @@ export class PermisosController {
 
   @Post('usuarios')
   @Permissions('permisos.asignar')
+  @ApiOperation({
+    summary: 'Conceder o denegar un permiso individual',
+    description:
+      'Configura una excepción de permiso específica para el usuario indicado.',
+  })
   assign(
     @Body() dto: AssignUserPermissionDto,
     @CurrentUser() user: JwtPayload,
@@ -45,27 +50,32 @@ export class PermisosController {
   }
   @Get('usuarios/:id')
   @Permissions('permisos.leer')
+  @ApiOperation({ summary: 'Listar permisos individuales de un usuario' })
   permissions(@Param('id', ParseIntPipe) id: number) {
     return this.assignments.forUser(id);
   }
 
   @Post()
   @Permissions('permisos.crear')
+  @ApiOperation({ summary: 'Crear un permiso' })
   create(@Body() dto: CreatePermisoDto, @CurrentUser() user: JwtPayload) {
     return this.service.create(dto, user.sub);
   }
   @Get()
   @Permissions('permisos.leer')
+  @ApiOperation({ summary: 'Listar permisos' })
   findAll(@Query() query: PaginationDto) {
     return this.service.findAll(query);
   }
   @Get(':id')
   @Permissions('permisos.leer')
+  @ApiOperation({ summary: 'Consultar un permiso por ID' })
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.service.findOne(id);
   }
   @Patch(':id')
   @Permissions('permisos.actualizar')
+  @ApiOperation({ summary: 'Actualizar un permiso' })
   update(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdatePermisoDto,
@@ -75,6 +85,11 @@ export class PermisosController {
   }
   @Patch(':id/baja')
   @Permissions('permisos.actualizar')
+  @ApiOperation({
+    summary: 'Dar de baja o reactivar un permiso',
+    description:
+      'Cambia el estado del permiso y registra el motivo cuando se efectúa la baja.',
+  })
   deactivate(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: BajaDto,

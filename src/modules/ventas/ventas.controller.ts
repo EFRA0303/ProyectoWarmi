@@ -13,6 +13,7 @@ import {
   ApiBearerAuth,
   ApiExtraModels,
   ApiOkResponse,
+  ApiOperation,
   ApiTags,
 } from '@nestjs/swagger';
 import { CurrentUser } from '../../common/decorators/current-user.decorator.js';
@@ -34,55 +35,79 @@ import { NotaVenta, Pago } from './entities/ventas.entities.js';
 @Controller('ventas')
 export class VentasController {
   constructor(@Inject(VentasService) private s: VentasService) {}
-  @Post('notas') @Permissions('ventas.crear') createNota(
-    @Body() d: CreateNotaVentaDto,
-    @CurrentUser() u: JwtPayload,
-  ) {
+  @Post('notas')
+  @Permissions('ventas.crear')
+  @ApiOperation({
+    summary: 'Emitir una nota de venta',
+    description:
+      'Valida sus conceptos y calcula en el servidor los precios congelados, subtotales y total de la venta.',
+  })
+  createNota(@Body() d: CreateNotaVentaDto, @CurrentUser() u: JwtPayload) {
     return this.s.createNota(d, u.sub);
   }
   @Get('notas')
   @Permissions('ventas.leer')
+  @ApiOperation({ summary: 'Listar notas de venta' })
   @ApiOkResponse({ schema: paginatedSchema(NotaVenta) })
   listNotas(@Query() q: DomainQueryDto) {
     return this.s.listNotas(q);
   }
-  @Get('notas/:id') @Permissions('ventas.leer') getNota(
-    @Param('id', ParseIntPipe) id: number,
-  ) {
+  @Get('notas/:id')
+  @Permissions('ventas.leer')
+  @ApiOperation({ summary: 'Consultar una nota de venta por ID' })
+  getNota(@Param('id', ParseIntPipe) id: number) {
     return this.s.oneNota(id);
   }
-  @Patch('notas/:id') @Permissions('ventas.actualizar') updateNota(
+  @Patch('notas/:id')
+  @Permissions('ventas.actualizar')
+  @ApiOperation({
+    summary: 'Actualizar o anular una nota de venta',
+    description:
+      'Permite modificar las observaciones o anular una nota conforme a sus reglas de estado.',
+  })
+  updateNota(
     @Param('id', ParseIntPipe) id: number,
     @Body() x: UpdateNotaVentaDto,
   ) {
     return this.s.updateNota(id, x);
   }
-  @Get('notas/:id/detalles') @Permissions('ventas.leer') listDetalles(
-    @Param('id', ParseIntPipe) id: number,
-  ) {
+  @Get('notas/:id/detalles')
+  @Permissions('ventas.leer')
+  @ApiOperation({ summary: 'Listar detalles de una nota de venta' })
+  listDetalles(@Param('id', ParseIntPipe) id: number) {
     return this.s.detalles(id);
   }
-  @Post('pagos') @Permissions('ventas.crear') createPago(
-    @Body() d: CreatePagoDto,
-    @CurrentUser() u: JwtPayload,
-  ) {
+  @Post('pagos')
+  @Permissions('ventas.crear')
+  @ApiOperation({
+    summary: 'Registrar un pago de una venta',
+    description:
+      'Registra un pago total o parcial y valida que el importe no supere el saldo pendiente.',
+  })
+  createPago(@Body() d: CreatePagoDto, @CurrentUser() u: JwtPayload) {
     return this.s.createPago(d, u.sub);
   }
   @Get('pagos')
   @Permissions('ventas.leer')
+  @ApiOperation({ summary: 'Listar pagos registrados' })
   @ApiOkResponse({ schema: paginatedSchema(Pago) })
   listPagos(@Query() q: DomainQueryDto) {
     return this.s.listPagos(q);
   }
-  @Get('pagos/:id') @Permissions('ventas.leer') getPago(
-    @Param('id', ParseIntPipe) id: number,
-  ) {
+  @Get('pagos/:id')
+  @Permissions('ventas.leer')
+  @ApiOperation({ summary: 'Consultar un pago por ID' })
+  getPago(@Param('id', ParseIntPipe) id: number) {
     return this.s.onePago(id);
   }
-  @Patch('pagos/:id') @Permissions('ventas.actualizar') updatePago(
-    @Param('id', ParseIntPipe) id: number,
-    @Body() d: UpdatePagoDto,
-  ) {
+  @Patch('pagos/:id')
+  @Permissions('ventas.actualizar')
+  @ApiOperation({
+    summary: 'Actualizar o anular un pago',
+    description:
+      'Permite modificar sus observaciones o anularlo aplicando las reglas financieras definidas.',
+  })
+  updatePago(@Param('id', ParseIntPipe) id: number, @Body() d: UpdatePagoDto) {
     return this.s.updatePago(id, d);
   }
 }

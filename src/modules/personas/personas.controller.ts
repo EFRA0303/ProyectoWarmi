@@ -9,7 +9,7 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
-import { ApiBearerAuth } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { PersonasService } from './personas.service.js';
 import { CreatePersonaDto } from './dto/create-persona.dto.js';
 import { UpdatePersonaDto } from './dto/update-persona.dto.js';
@@ -27,21 +27,25 @@ export class PersonasController {
 
   @Post()
   @Permissions('personas.crear')
+  @ApiOperation({ summary: 'Crear una persona' })
   create(@Body() dto: CreatePersonaDto, @CurrentUser() user: JwtPayload) {
     return this.service.create(dto, user.sub);
   }
   @Get()
   @Permissions('personas.leer')
+  @ApiOperation({ summary: 'Listar personas' })
   findAll(@Query() query: PaginationDto) {
     return this.service.findAll(query);
   }
   @Get(':id')
   @Permissions('personas.leer')
+  @ApiOperation({ summary: 'Consultar una persona por ID' })
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.service.findOne(id);
   }
   @Patch(':id')
   @Permissions('personas.actualizar')
+  @ApiOperation({ summary: 'Actualizar los datos de una persona' })
   update(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdatePersonaDto,
