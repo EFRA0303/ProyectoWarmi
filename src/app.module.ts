@@ -12,6 +12,16 @@ import { AccesosUsuarioModule } from './modules/accesos-usuario/accesos-usuario.
 import { AuditoriaModule } from './modules/auditoria/auditoria.module.js';
 import { ConfiguracionAuditoriaModule } from './modules/configuracion-auditoria/configuracion-auditoria.module.js';
 import { AuthModule } from './modules/auth/auth.module.js';
+import { HistorialesModule } from './modules/historiales/historiales.module.js';
+import { DisponibilidadModule } from './modules/disponibilidad/disponibilidad.module.js';
+import { CatalogoModule } from './modules/catalogo/catalogo.module.js';
+import { PaquetesPromocionesModule } from './modules/comercial/paquetes-promociones.module.js';
+import { AdquisicionesModule } from './modules/comercial/adquisiciones.module.js';
+import { EmpresaModule } from './modules/empresa/empresa.module.js';
+import { ClinicaModule } from './modules/clinica/clinica.module.js';
+import { AgendaModule } from './modules/agenda/agenda.module.js';
+import { VentasModule } from './modules/ventas/ventas.module.js';
+import { InventarioModule } from './modules/inventario/inventario.module.js';
 
 @Module({
   providers: [{ provide: APP_FILTER, useClass: DatabaseExceptionFilter }],
@@ -27,6 +37,16 @@ import { AuthModule } from './modules/auth/auth.module.js';
     AuditoriaModule,
     ConfiguracionAuditoriaModule,
     AuthModule,
+    HistorialesModule,
+    DisponibilidadModule,
+    CatalogoModule,
+    PaquetesPromocionesModule,
+    AdquisicionesModule,
+    EmpresaModule,
+    ClinicaModule,
+    AgendaModule,
+    VentasModule,
+    InventarioModule,
   ],
 })
 export class AppModule {}

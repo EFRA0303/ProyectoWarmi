@@ -7,6 +7,7 @@ import {
   OneToOne,
   JoinColumn,
   ManyToOne,
+  OneToMany,
   Check,
 } from 'typeorm';
 import type { Relation } from 'typeorm';
@@ -14,6 +15,7 @@ import { EstadoUsuario } from '../../../common/enums/estado-usuario.enum.js';
 import type { Persona } from '../../personas/entities/persona.entity.js';
 import type { Rol } from '../../roles/entities/rol.entity.js';
 import type { Personal } from '../../personal/entities/personal.entity.js';
+import type { HorarioExtraPersonal } from '../../disponibilidad/entities/horario-extra-personal.entity.js';
 
 @Entity('usuarios')
 @Check('CHK_usuarios_id_usuario', '"id_usuario" > 0')
@@ -98,6 +100,9 @@ export class Usuario {
 
   @OneToOne('Personal', 'usuario')
   personal: Relation<Personal> | null;
+
+  @OneToMany('HorarioExtraPersonal', 'autorizador')
+  horariosExtraAutorizados: Relation<HorarioExtraPersonal[]>;
 
   // Relaciones de auditoría
   @ManyToOne('Usuario', { nullable: true, onDelete: 'RESTRICT' })

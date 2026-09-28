@@ -6,8 +6,14 @@ import { integerEnv } from './config/env.validation.js';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  const allowedOrigins = (
+    process.env.CORS_ORIGINS ?? 'http://localhost:3001,http://localhost:5173'
+  )
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
   app.enableCors({
-    origin: 'http://localhost:3001',
+    origin: allowedOrigins,
     credentials: true,
   });
 

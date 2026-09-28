@@ -10,6 +10,11 @@ import { AppModule } from '../dist/app.module.js';
 import { databaseConfig } from '../dist/config/database.config.js';
 import { PostmanSchema1790000000000 } from '../dist/database/migrations/1790000000000-PostmanSchema.js';
 import { AccessAuditEvents1790000001000 } from '../dist/database/migrations/1790000001000-AccessAuditEvents.js';
+import { Historiales1790000002000 } from '../dist/database/migrations/1790000002000-Historiales.js';
+import { DisponibilidadPersonal1790400000000 } from '../dist/database/migrations/1790400000000-DisponibilidadPersonal.js';
+import { CatalogoServicios1790500000000 } from '../dist/database/migrations/1790500000000-CatalogoServicios.js';
+import { DomainModulesFiveToEleven1790600000000 } from '../dist/database/migrations/1790600000000-DomainModulesFiveToEleven.js';
+import { BusinessIntegrity1790700000000 } from '../dist/database/migrations/1790700000000-BusinessIntegrity.js';
 import { hashPassword } from '../dist/common/utils/password.js';
 import { Usuario } from '../dist/modules/usuarios/entities/usuario.entity.js';
 import { MailService } from '../dist/modules/auth/mail.service.js';
@@ -24,9 +29,13 @@ describe('Postman con PostgreSQL temporal, sin datos en la base de trabajo', () 
   let limitedToken: string;
   let personId: number;
   let patientId: number;
+  let historyId: number;
+  let staffId: number;
   let userId: number;
   let roleId: number;
   let configId: number;
+  let serviceId: number;
+  let measureId: number;
   let resetToken = '';
   const api = () => request(app.getHttpServer());
   const auth = () => 'Bearer ' + token;
@@ -39,7 +48,15 @@ describe('Postman con PostgreSQL temporal, sin datos en la base de trabajo', () 
     db = new DataSource({
       ...databaseConfig(),
       database: name,
-      migrations: [PostmanSchema1790000000000, AccessAuditEvents1790000001000],
+      migrations: [
+        PostmanSchema1790000000000,
+        AccessAuditEvents1790000001000,
+        Historiales1790000002000,
+        DisponibilidadPersonal1790400000000,
+        CatalogoServicios1790500000000,
+        DomainModulesFiveToEleven1790600000000,
+        BusinessIntegrity1790700000000,
+      ],
     });
     await db.initialize();
     await db.runMigrations();
@@ -57,6 +74,16 @@ describe('Postman con PostgreSQL temporal, sin datos en la base de trabajo', () 
     for (const resource of [
       'personas',
       'pacientes',
+      'historiales',
+      'disponibilidad',
+      'catalogo',
+      'comercial',
+      'adquisiciones',
+      'clinica',
+      'agenda',
+      'ventas',
+      'inventario',
+      'empresa',
       'usuarios',
       'personal',
       'roles',
@@ -266,6 +293,46 @@ describe('Postman con PostgreSQL temporal, sin datos en la base de trabajo', () 
       .expect(200);
   });
 
+  it('abre un unico historial por paciente y permite cerrarlo', async () => {
+    await api()
+      .post('/historiales')
+      .set('Authorization', auth())
+      .send({ id_paciente: 999999 })
+      .expect(400);
+    const history = await api()
+      .post('/historiales')
+      .set('Authorization', auth())
+      .send({
+        id_paciente: patientId,
+        observaciones_generales: 'Apertura de historia clinica',
+      })
+      .expect(201);
+    historyId = history.body.id_historial;
+    expect(history.body.estado).toBe('ACTIVO');
+    expect(Number.isFinite(Date.parse(history.body.fecha_apertura))).toBe(true);
+    await api()
+      .post('/historiales')
+      .set('Authorization', auth())
+      .send({ id_paciente: patientId })
+      .expect(409);
+    const closed = await api()
+      .patch('/historiales/' + historyId)
+      .set('Authorization', auth())
+      .send({ estado: 'CERRADO' })
+      .expect(200);
+    expect(closed.body.estado).toBe('CERRADO');
+    const list = await api()
+      .get('/historiales?estado=CERRADO')
+      .set('Authorization', auth())
+      .expect(200);
+    expect(list.body.total).toBe(1);
+    await api()
+      .patch('/historiales/' + historyId)
+      .set('Authorization', auth())
+      .send({ id_paciente: patientId })
+      .expect(400);
+  });
+
   it('crea usuarios activos, hashea contrasenas y aplica permisos', async () => {
     const role = await api()
       .post('/roles')
@@ -388,6 +455,7 @@ describe('Postman con PostgreSQL temporal, sin datos en la base de trabajo', () 
       })
       .expect(201);
     expect(employee.body.created_by).toBe(1);
+    staffId = employee.body.id_personal;
     const down = await api()
       .patch('/personal/' + employee.body.id_personal + '/baja')
       .set('Authorization', auth())
@@ -395,6 +463,429 @@ describe('Postman con PostgreSQL temporal, sin datos en la base de trabajo', () 
       .expect(200);
     expect(down.body.estado).toBe('BAJA');
     expect(down.body.updated_by).toBe(1);
+    await api()
+      .patch('/personal/' + staffId)
+      .set('Authorization', auth())
+      .send({ estado: 'ACTIVO' })
+      .expect(200);
+  });
+
+  it('gestiona horarios, extras y bloqueos sin solapamientos', async () => {
+    const schedule = await api()
+      .post('/disponibilidad/horarios')
+      .set('Authorization', auth())
+      .send({
+        id_personal: staffId,
+        dia_semana: 'LUNES',
+        hora_inicio: '08:00',
+        hora_fin: '12:00',
+      })
+      .expect(201);
+    expect(schedule.body.estado).toBe(true);
+    await api()
+      .post('/disponibilidad/horarios')
+      .set('Authorization', auth())
+      .send({
+        id_personal: staffId,
+        dia_semana: 'LUNES',
+        hora_inicio: '11:00',
+        hora_fin: '13:00',
+      })
+      .expect(409);
+    const schedules = await api()
+      .get('/disponibilidad/horarios?id_personal=' + staffId)
+      .set('Authorization', auth())
+      .expect(200);
+    expect(schedules.body.total).toBe(1);
+
+    const extra = await api()
+      .post('/disponibilidad/horarios-extra')
+      .set('Authorization', auth())
+      .send({
+        id_personal: staffId,
+        fecha: '2030-01-10',
+        hora_inicio: '14:00',
+        hora_fin: '16:00',
+        motivo: 'Atencion extraordinaria',
+      })
+      .expect(201);
+    expect(extra.body.autorizado_por).toBe(1);
+    expect(extra.body.estado).toBe('AUTORIZADO');
+    await api()
+      .patch('/disponibilidad/horarios-extra/' + extra.body.id_horario_extra)
+      .set('Authorization', auth())
+      .send({ estado: 'CANCELADO' })
+      .expect(200);
+
+    const block = await api()
+      .post('/disponibilidad/bloqueos')
+      .set('Authorization', auth())
+      .send({
+        id_personal: staffId,
+        fecha_hora_inicio: '2030-01-10T09:00:00-04:00',
+        fecha_hora_fin: '2030-01-10T10:00:00-04:00',
+        motivo: 'Reunion',
+      })
+      .expect(201);
+    expect(block.body.id_personal).toBe(staffId);
+    await api()
+      .post('/disponibilidad/bloqueos')
+      .set('Authorization', auth())
+      .send({
+        id_personal: staffId,
+        fecha_hora_inicio: '2030-01-10T09:30:00-04:00',
+        fecha_hora_fin: '2030-01-10T10:30:00-04:00',
+      })
+      .expect(409);
+    await api()
+      .patch('/disponibilidad/bloqueos/' + block.body.id_bloqueo)
+      .set('Authorization', auth())
+      .send({
+        fecha_hora_inicio: '2030-01-10T11:00:00-04:00',
+        fecha_hora_fin: '2030-01-10T10:00:00-04:00',
+      })
+      .expect(400);
+    await api()
+      .get('/disponibilidad/bloqueos?id_personal=' + staffId)
+      .set('Authorization', auth())
+      .expect(200);
+  });
+
+  it('gestiona el catalogo jerarquico y medidas por servicio', async () => {
+    const area = await api()
+      .post('/catalogo/areas')
+      .set('Authorization', auth())
+      .send({ nombre: 'Fisioterapia', descripcion: 'Area terapeutica' })
+      .expect(201);
+    const category = await api()
+      .post('/catalogo/categorias')
+      .set('Authorization', auth())
+      .send({ id_area: area.body.id_area, nombre: 'Rehabilitacion' })
+      .expect(201);
+    const service = await api()
+      .post('/catalogo/servicios')
+      .set('Authorization', auth())
+      .send({
+        id_categoria: category.body.id_categoria,
+        nombre: 'Terapia manual',
+        duracion_minutos: 45,
+        requiere_valoracion: true,
+      })
+      .expect(201);
+    serviceId = service.body.id_servicio;
+    expect(service.body.duracion_minutos).toBe(45);
+    await api()
+      .post('/catalogo/servicios')
+      .set('Authorization', auth())
+      .send({
+        id_categoria: category.body.id_categoria,
+        nombre: 'Duracion invalida',
+        duracion_minutos: 0,
+      })
+      .expect(400);
+    const measure = await api()
+      .post('/catalogo/tipos-medida')
+      .set('Authorization', auth())
+      .send({ nombre: 'Peso', unidad: 'kg' })
+      .expect(201);
+    measureId = measure.body.id_tipo_medida;
+    const assigned = await api()
+      .post('/catalogo/servicios/' + service.body.id_servicio + '/medidas')
+      .set('Authorization', auth())
+      .send({
+        id_tipo_medida: measure.body.id_tipo_medida,
+        obligatorio: true,
+      })
+      .expect(201);
+    expect(assigned.body.obligatorio).toBe(true);
+    const measures = await api()
+      .get('/catalogo/servicios/' + service.body.id_servicio + '/medidas')
+      .set('Authorization', auth())
+      .expect(200);
+    expect(measures.body).toHaveLength(1);
+    expect(measures.body[0].tipoMedida.nombre).toBe('Peso');
+    const services = await api()
+      .get(
+        '/catalogo/servicios?id_categoria=' +
+          category.body.id_categoria +
+          '&requiere_valoracion=true',
+      )
+      .set('Authorization', auth())
+      .expect(200);
+    expect(services.body.total).toBe(1);
+    await api()
+      .patch('/catalogo/areas/' + area.body.id_area)
+      .set('Authorization', auth())
+      .send({ estado: 'BAJA' })
+      .expect(200);
+    await api()
+      .patch('/catalogo/categorias/' + category.body.id_categoria)
+      .set('Authorization', auth())
+      .send({ estado: 'ACTIVO' })
+      .expect(400);
+    await api()
+      .patch('/catalogo/areas/' + area.body.id_area)
+      .set('Authorization', auth())
+      .send({ estado: 'ACTIVO' })
+      .expect(200);
+    await api()
+      .patch('/catalogo/categorias/' + category.body.id_categoria)
+      .set('Authorization', auth())
+      .send({ estado: 'ACTIVO' })
+      .expect(200);
+  });
+
+  it('gestiona paquetes, adquisiciones y reglas clinicas relacionadas', async () => {
+    await api()
+      .patch('/historiales/' + historyId)
+      .set('Authorization', auth())
+      .send({ estado: 'ACTIVO' })
+      .expect(200);
+    const pkg = await api()
+      .post('/comercial/paquetes')
+      .set('Authorization', auth())
+      .send({ nombre: 'Paquete E2E', precio: '280.00' })
+      .expect(201);
+    await api()
+      .post(`/comercial/paquetes/${pkg.body.id_paquete}/servicios`)
+      .set('Authorization', auth())
+      .send({ id_servicio: serviceId, sesiones_incluidas: 3 })
+      .expect(201);
+    const acquisition = await api()
+      .post('/adquisiciones')
+      .set('Authorization', auth())
+      .send({
+        id_paciente: patientId,
+        id_paquete: pkg.body.id_paquete,
+        fecha_adquisicion: '2030-01-01T10:00:00-04:00',
+        detalles: [
+          {
+            id_servicio: serviceId,
+            sesiones_incluidas: 3,
+            precio_unitario: '100.00',
+          },
+        ],
+      })
+      .expect(201);
+    expect(acquisition.body.total).toBe('280.00');
+    const details = await api()
+      .get(`/adquisiciones/${acquisition.body.id_adquisicion}/detalles`)
+      .set('Authorization', auth())
+      .expect(200);
+    expect(details.body[0].nombre_servicio_snapshot).toBe('Terapia manual');
+
+    const application = await api()
+      .post('/clinica/solicitudes')
+      .set('Authorization', auth())
+      .send({
+        id_historial: historyId,
+        id_servicio: serviceId,
+        fecha_solicitud: '2030-01-01T11:00:00-04:00',
+      })
+      .expect(201);
+    const valuation = await api()
+      .post('/clinica/valoraciones')
+      .set('Authorization', auth())
+      .send({
+        id_historial: historyId,
+        id_solicitud: application.body.id_solicitud,
+        id_personal: staffId,
+        tipo: 'INICIAL',
+        fecha_valoracion: '2030-01-01T11:15:00-04:00',
+      })
+      .expect(201);
+    await api()
+      .post(`/clinica/valoraciones/${valuation.body.id_valoracion}/medidas`)
+      .set('Authorization', auth())
+      .send({ id_tipo_medida: measureId, valor: '65.50' })
+      .expect(201);
+    const treatment = await api()
+      .post('/clinica/tratamientos')
+      .set('Authorization', auth())
+      .send({
+        id_historial: historyId,
+        id_servicio: serviceId,
+        indicado_por: staffId,
+        id_detalle_adquisicion: details.body[0].id_detalle_adquisicion,
+        sesiones_iniciales: 3,
+      })
+      .expect(201);
+    expect(treatment.body.estado).toBe('PENDIENTE');
+  });
+
+  it('impide cruces de agenda y convierte la cita atendida en sesion', async () => {
+    const [treatment] = await db.query(
+      'SELECT id_tratamiento FROM tratamientos_paciente ORDER BY id_tratamiento DESC LIMIT 1',
+    );
+    const appointment = await api()
+      .post('/agenda/citas')
+      .set('Authorization', auth())
+      .send({
+        id_paciente: patientId,
+        id_tratamiento: treatment.id_tratamiento,
+        id_personal: staffId,
+        numero_sesion: 1,
+        fecha_hora_inicio: '2030-01-07T09:00:00-04:00',
+        fecha_hora_fin: '2030-01-07T09:45:00-04:00',
+      })
+      .expect(201);
+    await api()
+      .post('/agenda/citas')
+      .set('Authorization', auth())
+      .send({
+        id_paciente: patientId,
+        id_personal: staffId,
+        fecha_hora_inicio: '2030-01-07T09:15:00-04:00',
+        fecha_hora_fin: '2030-01-07T10:00:00-04:00',
+      })
+      .expect(400);
+    await api()
+      .patch(`/agenda/citas/${appointment.body.id_cita}`)
+      .set('Authorization', auth())
+      .send({
+        estado: 'EN_ESPERA',
+        fecha_llegada: '2030-01-07T08:55:00-04:00',
+      })
+      .expect(200);
+    const session = await api()
+      .post('/clinica/sesiones')
+      .set('Authorization', auth())
+      .send({
+        id_tratamiento: treatment.id_tratamiento,
+        id_cita: appointment.body.id_cita,
+        atendido_por: staffId,
+        fecha_sesion: '2030-01-07T09:00:00-04:00',
+      })
+      .expect(201);
+    expect(session.body.id_cita).toBe(appointment.body.id_cita);
+    const attended = await api()
+      .get(`/agenda/citas/${appointment.body.id_cita}`)
+      .set('Authorization', auth())
+      .expect(200);
+    expect(attended.body.estado).toBe('ATENDIDA');
+  });
+
+  it('calcula ventas, controla pagos y protege el stock', async () => {
+    const product = await api()
+      .post('/inventario/productos')
+      .set('Authorization', auth())
+      .send({
+        nombre: 'Aceite E2E',
+        unidad_medida: 'ml',
+        es_insumo: true,
+        es_vendible: true,
+      })
+      .expect(201);
+    await api()
+      .post(`/inventario/servicios/${serviceId}/productos`)
+      .set('Authorization', auth())
+      .send({
+        id_producto: product.body.id_producto,
+        cantidad_referencial: '5.00',
+      })
+      .expect(201);
+    const lot = await api()
+      .post('/inventario/lotes')
+      .set('Authorization', auth())
+      .send({
+        id_producto: product.body.id_producto,
+        numero_lote: 'E2E-001',
+        cantidad_inicial: '100.00',
+        fecha_ingreso: '2030-01-01',
+      })
+      .expect(201);
+    const initialStock = await api()
+      .get(`/inventario/lotes/${lot.body.id_lote}/stock`)
+      .set('Authorization', auth())
+      .expect(200);
+    expect(initialStock.body.stock).toBe('100.00');
+    const note = await api()
+      .post('/ventas/notas')
+      .set('Authorization', auth())
+      .send({
+        id_paciente: patientId,
+        numero_nota: 'E2E-0001',
+        fecha_emision: '2030-01-07T10:00:00-04:00',
+        detalles: [
+          {
+            id_producto: product.body.id_producto,
+            cantidad: '2.00',
+            precio_unitario: '10.00',
+          },
+        ],
+      })
+      .expect(201);
+    expect(note.body.total).toBe('20.00');
+    await api()
+      .post('/ventas/pagos')
+      .set('Authorization', auth())
+      .send({
+        id_nota_venta: note.body.id_nota_venta,
+        monto: '15.00',
+        metodo_pago: 'QR',
+        fecha_pago: '2030-01-07T10:05:00-04:00',
+      })
+      .expect(201);
+    await api()
+      .post('/ventas/pagos')
+      .set('Authorization', auth())
+      .send({
+        id_nota_venta: note.body.id_nota_venta,
+        monto: '6.00',
+        metodo_pago: 'EFECTIVO',
+        fecha_pago: '2030-01-07T10:06:00-04:00',
+      })
+      .expect(400);
+    await api()
+      .post('/inventario/salidas-venta')
+      .set('Authorization', auth())
+      .send({
+        id_detalle: note.body.detalles[0].id_detalle,
+        id_lote: lot.body.id_lote,
+        cantidad: '2.00',
+      })
+      .expect(201);
+    const [session] = await db.query(
+      'SELECT id_sesion FROM sesiones ORDER BY id_sesion DESC LIMIT 1',
+    );
+    await api()
+      .post('/inventario/consumos-sesion')
+      .set('Authorization', auth())
+      .send({
+        id_sesion: session.id_sesion,
+        id_lote: lot.body.id_lote,
+        cantidad: '5.00',
+      })
+      .expect(201);
+    const stock = await api()
+      .get(`/inventario/lotes/${lot.body.id_lote}/stock`)
+      .set('Authorization', auth())
+      .expect(200);
+    expect(stock.body.stock).toBe('93.00');
+    await api()
+      .post('/inventario/movimientos')
+      .set('Authorization', auth())
+      .send({
+        id_lote: lot.body.id_lote,
+        tipo: 'MERMA',
+        cantidad: '100.00',
+        fecha_movimiento: '2030-01-07T11:00:00-04:00',
+      })
+      .expect(400);
+  });
+
+  it('configura los datos de empresa y documentos', async () => {
+    const company = await api()
+      .post('/empresa')
+      .set('Authorization', auth())
+      .send({ nombre_comercial: 'Warmi E2E', moneda: 'BOB' })
+      .expect(201);
+    const config = await api()
+      .post('/empresa/configuraciones-documentos')
+      .set('Authorization', auth())
+      .send({ id_empresa: company.body.id_empresa, encabezado: 'Warmi E2E' })
+      .expect(201);
+    expect(config.body.mostrar_logo).toBe(true);
   });
 
   it('protege configuraciones obligatorias y permite consultar historiales', async () => {
@@ -517,6 +1008,7 @@ describe('Postman con PostgreSQL temporal, sin datos en la base de trabajo', () 
     for (const resource of [
       'personas',
       'pacientes',
+      'historiales',
       'usuarios',
       'personal',
       'roles',

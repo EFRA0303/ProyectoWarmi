@@ -2,7 +2,7 @@
   "info": {
     "name": "Warmi",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
-    "description": "JWT y estados. Sin DELETE, seeds ni carga automatica de datos. Completa variables con tu cuenta manual; consulta docs/POSTMAN.md. No ejecutar todas las carpetas con Runner sin revisar bajas y contrasenas."
+    "description": "JWT, estados y pruebas por modulo. Completa variables con tu cuenta; consulta docs/POSTMAN.md. Los DELETE de accesos y el logout estan al final porque son destructivos o invalidan la sesion."
   },
   "auth": {
     "type": "bearer",
@@ -45,6 +45,63 @@
       "value": "",
       "type": "string"
     },
+    {
+      "key": "historial_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "horario_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "horario_extra_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "bloqueo_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "area_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "categoria_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "servicio_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "tipo_medida_id",
+      "value": "",
+      "type": "string"
+    },
+    { "key": "paquete_id", "value": "", "type": "string" },
+    { "key": "promocion_id", "value": "", "type": "string" },
+    { "key": "adquisicion_id", "value": "", "type": "string" },
+    { "key": "solicitud_id", "value": "", "type": "string" },
+    { "key": "tratamiento_id", "value": "", "type": "string" },
+    { "key": "sesion_id", "value": "", "type": "string" },
+    { "key": "valoracion_id", "value": "", "type": "string" },
+    { "key": "cita_id", "value": "", "type": "string" },
+    { "key": "notificacion_id", "value": "", "type": "string" },
+    { "key": "nota_venta_id", "value": "", "type": "string" },
+    { "key": "pago_id", "value": "", "type": "string" },
+    { "key": "producto_id", "value": "", "type": "string" },
+    { "key": "lote_id", "value": "", "type": "string" },
+    { "key": "movimiento_id", "value": "", "type": "string" },
+    { "key": "detalle_nota_id", "value": "", "type": "string" },
+    { "key": "empresa_id", "value": "", "type": "string" },
+    { "key": "config_documento_id", "value": "", "type": "string" },
     {
       "key": "usuario_id",
       "value": "",
@@ -108,7 +165,7 @@
             "url": "{{base_url}}/auth/login",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"correo_acceso\": \"{{correo}}\",\n  \"contrasena\": \"{{contrasena}}\"\n}",
+              "raw": "{\n  \"correo_acceso\": \"admin@warmi.local\",\n  \"contrasena\": \"12345678Efr@\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -153,7 +210,7 @@
           ]
         },
         {
-          "name": "POST - Recuperar contrasena",
+          "name": "POST - Recuperar contraseña",
           "request": {
             "method": "POST",
             "header": [
@@ -189,7 +246,7 @@
           ]
         },
         {
-          "name": "POST - Restablecer contrasena",
+          "name": "POST - Restablecer contraseña",
           "request": {
             "method": "POST",
             "header": [
@@ -225,7 +282,7 @@
           ]
         },
         {
-          "name": "POST - Cambiar contrasena",
+          "name": "POST - Cambiar contraseña",
           "request": {
             "method": "POST",
             "header": [
@@ -1397,7 +1454,1964 @@
       ]
     },
     {
-      "name": "10 - Configuracion auditoria",
+      "name": "10 - Historiales",
+      "description": "Ejecuta primero POST - Crear con un paciente ACTIVO que aun no tenga historial. La carpeta conserva el historial y solo cambia su estado; no existe DELETE.",
+      "item": [
+        {
+          "name": "POST - Crear",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/historiales",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_paciente\": {{paciente_id}},\n  \"observaciones_generales\": \"Apertura de historia clinica\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 201', () => pm.response.to.have.status(201));",
+                  "if (pm.response.code === 201) {",
+                  "  const body = pm.response.json();",
+                  "  pm.collectionVariables.set('historial_id', body.id_historial);",
+                  "  pm.test('Historial inicia ACTIVO', () => pm.expect(body.estado).to.eql('ACTIVO'));",
+                  "  pm.test('Fecha de apertura generada', () => pm.expect(body.fecha_apertura).to.be.a('string'));",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET - Listar activos",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/historiales?page=1&limit=20&estado=ACTIVO"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Respuesta paginada', () => { const body = pm.response.json(); pm.expect(body.data).to.be.an('array'); pm.expect(body.total).to.be.a('number'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET - Por ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/historiales/{{historial_id}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Devuelve el historial solicitado', () => pm.expect(String(pm.response.json().id_historial)).to.eql(pm.collectionVariables.get('historial_id')));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PATCH - Actualizar observaciones",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/historiales/{{historial_id}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"observaciones_generales\": \"Observaciones generales actualizadas desde Postman\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Actualiza observaciones', () => pm.expect(pm.response.json().observaciones_generales).to.include('Postman'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PATCH - Cerrar",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/historiales/{{historial_id}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"estado\": \"CERRADO\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Historial cerrado', () => pm.expect(pm.response.json().estado).to.eql('CERRADO'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET - Listar cerrados",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/historiales?page=1&limit=20&estado=CERRADO"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Solo devuelve cerrados', () => pm.expect(pm.response.json().data.every((row) => row.estado === 'CERRADO')).to.be.true);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PATCH - Reabrir",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/historiales/{{historial_id}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"estado\": \"ACTIVO\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Historial reabierto', () => pm.expect(pm.response.json().estado).to.eql('ACTIVO'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST - Rechazar duplicado",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/historiales",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_paciente\": {{paciente_id}}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 409', () => pm.response.to.have.status(409));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PATCH - Rechazar cambio de paciente",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/historiales/{{historial_id}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_paciente\": {{paciente_id}}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 400', () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "11 - Disponibilidad",
+      "description": "Requiere personal_id de un registro ACTIVO. Ejecuta la carpeta en orden para crear y consultar horarios, extras y bloqueos.",
+      "item": [
+        {
+          "name": "POST - Crear horario semanal",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{base_url}}/disponibilidad/horarios",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_personal\": {{personal_id}},\n  \"dia_semana\": \"LUNES\",\n  \"hora_inicio\": \"08:00\",\n  \"hora_fin\": \"12:00\"\n}",
+              "options": { "raw": { "language": "json" } }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 201', () => pm.response.to.have.status(201));",
+                  "if (pm.response.code === 201) { const body = pm.response.json(); pm.collectionVariables.set('horario_id', body.id_horario); pm.test('Horario activo', () => pm.expect(body.estado).to.be.true); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET - Listar horarios",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/disponibilidad/horarios?page=1&limit=20&id_personal={{personal_id}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Respuesta paginada', () => pm.expect(pm.response.json().data).to.be.an('array'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET - Horario por ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/disponibilidad/horarios/{{horario_id}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PATCH - Desactivar horario",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{base_url}}/disponibilidad/horarios/{{horario_id}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"estado\": false\n}",
+              "options": { "raw": { "language": "json" } }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Horario inactivo', () => pm.expect(pm.response.json().estado).to.be.false);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PATCH - Reactivar horario",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{base_url}}/disponibilidad/horarios/{{horario_id}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"estado\": true\n}",
+              "options": { "raw": { "language": "json" } }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST - Crear horario extra",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{base_url}}/disponibilidad/horarios-extra",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_personal\": {{personal_id}},\n  \"fecha\": \"2030-01-10\",\n  \"hora_inicio\": \"14:00\",\n  \"hora_fin\": \"16:00\",\n  \"motivo\": \"Atencion extraordinaria\"\n}",
+              "options": { "raw": { "language": "json" } }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 201', () => pm.response.to.have.status(201));",
+                  "if (pm.response.code === 201) { const body = pm.response.json(); pm.collectionVariables.set('horario_extra_id', body.id_horario_extra); pm.test('Autorizador obtenido del JWT', () => pm.expect(body.autorizado_por).to.be.a('number')); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET - Listar horarios extra",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/disponibilidad/horarios-extra?page=1&limit=20&id_personal={{personal_id}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PATCH - Cancelar horario extra",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{base_url}}/disponibilidad/horarios-extra/{{horario_extra_id}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"estado\": \"CANCELADO\"\n}",
+              "options": { "raw": { "language": "json" } }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Horario cancelado', () => pm.expect(pm.response.json().estado).to.eql('CANCELADO'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST - Crear bloqueo",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{base_url}}/disponibilidad/bloqueos",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_personal\": {{personal_id}},\n  \"fecha_hora_inicio\": \"2030-01-10T09:00:00-04:00\",\n  \"fecha_hora_fin\": \"2030-01-10T10:00:00-04:00\",\n  \"motivo\": \"Reunion\"\n}",
+              "options": { "raw": { "language": "json" } }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 201', () => pm.response.to.have.status(201));",
+                  "if (pm.response.code === 201) pm.collectionVariables.set('bloqueo_id', pm.response.json().id_bloqueo);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET - Listar bloqueos",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/disponibilidad/bloqueos?page=1&limit=20&id_personal={{personal_id}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PATCH - Actualizar bloqueo",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{base_url}}/disponibilidad/bloqueos/{{bloqueo_id}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"motivo\": \"Reunion administrativa\"\n}",
+              "options": { "raw": { "language": "json" } }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "12 - Catálogo de servicios",
+      "description": "Ejecuta en orden: área, categoría, servicio, tipo de medida y asignación de la medida.",
+      "item": [
+        {
+          "name": "POST - Crear área",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{base_url}}/catalogo/areas",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"Fisioterapia\",\n  \"descripcion\": \"Área terapéutica\"\n}",
+              "options": { "raw": { "language": "json" } }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 201', () => pm.response.to.have.status(201));",
+                  "if (pm.response.code === 201) pm.collectionVariables.set('area_id', pm.response.json().id_area);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET - Listar áreas",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/catalogo/areas?page=1&limit=20"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET - Área por ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/catalogo/areas/{{area_id}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PATCH - Actualizar área",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{base_url}}/catalogo/areas/{{area_id}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"descripcion\": \"Área terapéutica actualizada\"\n}",
+              "options": { "raw": { "language": "json" } }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST - Crear categoría",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{base_url}}/catalogo/categorias",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_area\": {{area_id}},\n  \"nombre\": \"Rehabilitación\",\n  \"descripcion\": \"Servicios de rehabilitación\"\n}",
+              "options": { "raw": { "language": "json" } }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 201', () => pm.response.to.have.status(201));",
+                  "if (pm.response.code === 201) pm.collectionVariables.set('categoria_id', pm.response.json().id_categoria);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET - Listar categorías",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/catalogo/categorias?page=1&limit=20&id_area={{area_id}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET - Categoría por ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/catalogo/categorias/{{categoria_id}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PATCH - Actualizar categoría",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{base_url}}/catalogo/categorias/{{categoria_id}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"descripcion\": \"Categoría actualizada\"\n}",
+              "options": { "raw": { "language": "json" } }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST - Crear servicio",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{base_url}}/catalogo/servicios",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_categoria\": {{categoria_id}},\n  \"nombre\": \"Terapia manual\",\n  \"duracion_minutos\": 45,\n  \"descripcion\": \"Sesión terapéutica\",\n  \"requiere_valoracion\": true\n}",
+              "options": { "raw": { "language": "json" } }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 201', () => pm.response.to.have.status(201));",
+                  "if (pm.response.code === 201) pm.collectionVariables.set('servicio_id', pm.response.json().id_servicio);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET - Listar servicios",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/catalogo/servicios?page=1&limit=20&id_categoria={{categoria_id}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET - Servicio por ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/catalogo/servicios/{{servicio_id}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PATCH - Actualizar servicio",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{base_url}}/catalogo/servicios/{{servicio_id}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"duracion_minutos\": 60\n}",
+              "options": { "raw": { "language": "json" } }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST - Crear tipo de medida",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{base_url}}/catalogo/tipos-medida",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"Peso\",\n  \"unidad\": \"kg\"\n}",
+              "options": { "raw": { "language": "json" } }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 201', () => pm.response.to.have.status(201));",
+                  "if (pm.response.code === 201) pm.collectionVariables.set('tipo_medida_id', pm.response.json().id_tipo_medida);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET - Listar tipos de medida",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/catalogo/tipos-medida?page=1&limit=20"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET - Tipo de medida por ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/catalogo/tipos-medida/{{tipo_medida_id}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PATCH - Actualizar tipo de medida",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{base_url}}/catalogo/tipos-medida/{{tipo_medida_id}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"unidad\": \"kilogramos\"\n}",
+              "options": { "raw": { "language": "json" } }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST - Asignar medida al servicio",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{base_url}}/catalogo/servicios/{{servicio_id}}/medidas",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_tipo_medida\": {{tipo_medida_id}},\n  \"obligatorio\": true\n}",
+              "options": { "raw": { "language": "json" } }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 201', () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET - Medidas del servicio",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/catalogo/servicios/{{servicio_id}}/medidas"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "13 - Paquetes y promociones",
+      "item": [
+        {
+          "name": "POST - Crear paquete",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"Paquete bienestar\",\n  \"descripcion\": \"Tres sesiones\",\n  \"precio\": \"300.00\"\n}"
+            },
+            "url": "{{base_url}}/comercial/paquetes"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) pm.collectionVariables.set('paquete_id', pm.response.json().id_paquete);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET - Listar paquetes",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/comercial/paquetes?page=1&limit=20"
+          }
+        },
+        {
+          "name": "GET - Paquete por ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/comercial/paquetes/{{paquete_id}}"
+          }
+        },
+        {
+          "name": "PATCH - Actualizar paquete",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"precio\": \"280.00\"\n}" },
+            "url": "{{base_url}}/comercial/paquetes/{{paquete_id}}"
+          }
+        },
+        {
+          "name": "POST - Asignar servicio a paquete",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_servicio\": {{servicio_id}},\n  \"sesiones_incluidas\": 3\n}"
+            },
+            "url": "{{base_url}}/comercial/paquetes/{{paquete_id}}/servicios"
+          }
+        },
+        {
+          "name": "GET - Servicios del paquete",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/comercial/paquetes/{{paquete_id}}/servicios"
+          }
+        },
+        {
+          "name": "POST - Crear promoción",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"Promoción primavera\",\n  \"tipo_descuento\": \"PORCENTAJE\",\n  \"valor_descuento\": \"10.00\",\n  \"fecha_inicio\": \"2026-10-01T08:00:00-04:00\",\n  \"fecha_fin\": \"2026-12-01T20:00:00-04:00\"\n}"
+            },
+            "url": "{{base_url}}/comercial/promociones"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) pm.collectionVariables.set('promocion_id', pm.response.json().id_promocion);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET - Listar promociones",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/comercial/promociones?page=1&limit=20"
+          }
+        },
+        {
+          "name": "GET - Promoción por ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/comercial/promociones/{{promocion_id}}"
+          }
+        },
+        {
+          "name": "PATCH - Actualizar promoción",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"estado\": \"ACTIVA\"\n}" },
+            "url": "{{base_url}}/comercial/promociones/{{promocion_id}}"
+          }
+        },
+        {
+          "name": "POST - Asignar servicio a promoción",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_servicio\": {{servicio_id}},\n  \"sesiones_incluidas\": 1\n}"
+            },
+            "url": "{{base_url}}/comercial/promociones/{{promocion_id}}/servicios"
+          }
+        },
+        {
+          "name": "GET - Servicios de la promoción",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/comercial/promociones/{{promocion_id}}/servicios"
+          }
+        }
+      ]
+    },
+    {
+      "name": "14 - Adquisiciones",
+      "item": [
+        {
+          "name": "POST - Crear con detalles",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_paciente\": {{paciente_id}},\n  \"id_paquete\": {{paquete_id}},\n  \"fecha_adquisicion\": \"2026-10-01T10:00:00-04:00\",\n  \"precio_original\": \"300.00\",\n  \"descuento\": \"0.00\",\n  \"total\": \"300.00\",\n  \"detalles\": [{\"id_servicio\": {{servicio_id}}, \"nombre_servicio_snapshot\": \"Servicio\", \"sesiones_incluidas\": 3, \"precio_unitario\": \"100.00\", \"descuento\": \"0.00\", \"subtotal\": \"300.00\"}]\n}"
+            },
+            "url": "{{base_url}}/adquisiciones"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) pm.collectionVariables.set('adquisicion_id', pm.response.json().id_adquisicion);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET - Listar",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/adquisiciones?page=1&limit=20"
+          }
+        },
+        {
+          "name": "GET - Por ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/adquisiciones/{{adquisicion_id}}"
+          }
+        },
+        {
+          "name": "GET - Detalles",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/adquisiciones/{{adquisicion_id}}/detalles"
+          }
+        },
+        {
+          "name": "PATCH - Actualizar estado",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"estado\": \"COMPLETADA\"\n}"
+            },
+            "url": "{{base_url}}/adquisiciones/{{adquisicion_id}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "15 - Atención clínica",
+      "item": [
+        {
+          "name": "POST - Crear solicitud",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_historial\": {{historial_id}},\n  \"id_servicio\": {{servicio_id}},\n  \"fecha_solicitud\": \"2026-10-01T10:00:00-04:00\",\n  \"motivo\": \"Valoración inicial\"\n}"
+            },
+            "url": "{{base_url}}/clinica/solicitudes"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) pm.collectionVariables.set('solicitud_id', pm.response.json().id_solicitud);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET - Listar solicitudes",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/clinica/solicitudes?page=1&limit=20"
+          }
+        },
+        {
+          "name": "GET - Solicitud por ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/clinica/solicitudes/{{solicitud_id}}"
+          }
+        },
+        {
+          "name": "PATCH - Actualizar solicitud",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"estado\": \"VALORADO\"\n}"
+            },
+            "url": "{{base_url}}/clinica/solicitudes/{{solicitud_id}}"
+          }
+        },
+        {
+          "name": "POST - Crear tratamiento",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_historial\": {{historial_id}},\n  \"id_servicio\": {{servicio_id}},\n  \"indicado_por\": {{personal_id}},\n  \"sesiones_iniciales\": 3\n}"
+            },
+            "url": "{{base_url}}/clinica/tratamientos"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) pm.collectionVariables.set('tratamiento_id', pm.response.json().id_tratamiento);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET - Listar tratamientos",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/clinica/tratamientos?page=1&limit=20"
+          }
+        },
+        {
+          "name": "GET - Tratamiento por ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/clinica/tratamientos/{{tratamiento_id}}"
+          }
+        },
+        {
+          "name": "PATCH - Actualizar tratamiento",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"estado\": \"EN_CURSO\"\n}"
+            },
+            "url": "{{base_url}}/clinica/tratamientos/{{tratamiento_id}}"
+          }
+        },
+        {
+          "name": "POST - Ampliar tratamiento",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sesiones_agregadas\": 2,\n  \"autorizado_por\": {{personal_id}},\n  \"fecha_ampliacion\": \"2026-10-05T10:00:00-04:00\"\n}"
+            },
+            "url": "{{base_url}}/clinica/tratamientos/{{tratamiento_id}}/ampliaciones"
+          }
+        },
+        {
+          "name": "GET - Ampliaciones",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/clinica/tratamientos/{{tratamiento_id}}/ampliaciones"
+          }
+        },
+        {
+          "name": "POST - Registrar sesión",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_tratamiento\": {{tratamiento_id}},\n  \"atendido_por\": {{personal_id}},\n  \"fecha_sesion\": \"2026-10-10T10:00:00-04:00\"\n}"
+            },
+            "url": "{{base_url}}/clinica/sesiones"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) pm.collectionVariables.set('sesion_id', pm.response.json().id_sesion);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET - Listar sesiones",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/clinica/sesiones?page=1&limit=20"
+          }
+        },
+        {
+          "name": "GET - Sesión por ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/clinica/sesiones/{{sesion_id}}"
+          }
+        },
+        {
+          "name": "PATCH - Actualizar sesión",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"observaciones\": \"Evolución favorable\"\n}"
+            },
+            "url": "{{base_url}}/clinica/sesiones/{{sesion_id}}"
+          }
+        },
+        {
+          "name": "POST - Crear valoración",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_historial\": {{historial_id}},\n  \"id_solicitud\": {{solicitud_id}},\n  \"id_personal\": {{personal_id}},\n  \"tipo\": \"INICIAL\",\n  \"fecha_valoracion\": \"2026-10-01T11:00:00-04:00\"\n}"
+            },
+            "url": "{{base_url}}/clinica/valoraciones"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) pm.collectionVariables.set('valoracion_id', pm.response.json().id_valoracion);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET - Listar valoraciones",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/clinica/valoraciones?page=1&limit=20"
+          }
+        },
+        {
+          "name": "GET - Valoración por ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/clinica/valoraciones/{{valoracion_id}}"
+          }
+        },
+        {
+          "name": "PATCH - Actualizar valoración",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"observaciones\": \"Sin contraindicaciones\"\n}"
+            },
+            "url": "{{base_url}}/clinica/valoraciones/{{valoracion_id}}"
+          }
+        },
+        {
+          "name": "POST - Registrar medida",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_tipo_medida\": {{tipo_medida_id}},\n  \"valor\": \"75.50\"\n}"
+            },
+            "url": "{{base_url}}/clinica/valoraciones/{{valoracion_id}}/medidas"
+          }
+        },
+        {
+          "name": "GET - Medidas de valoración",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/clinica/valoraciones/{{valoracion_id}}/medidas"
+          }
+        }
+      ]
+    },
+    {
+      "name": "16 - Agenda y citas",
+      "item": [
+        {
+          "name": "POST - Crear cita",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_paciente\": {{paciente_id}},\n  \"id_personal\": {{personal_id}},\n  \"fecha_hora_inicio\": \"2026-10-05T10:00:00-04:00\",\n  \"fecha_hora_fin\": \"2026-10-05T11:00:00-04:00\"\n}"
+            },
+            "url": "{{base_url}}/agenda/citas"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) pm.collectionVariables.set('cita_id', pm.response.json().id_cita);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET - Listar citas",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/agenda/citas?page=1&limit=20"
+          }
+        },
+        {
+          "name": "GET - Cita por ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/agenda/citas/{{cita_id}}"
+          }
+        },
+        {
+          "name": "PATCH - Actualizar cita",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"observaciones\": \"Paciente confirmó asistencia\"\n}"
+            },
+            "url": "{{base_url}}/agenda/citas/{{cita_id}}"
+          }
+        },
+        {
+          "name": "POST - Reprogramar cita",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"inicio_nuevo\": \"2026-10-12T10:00:00-04:00\",\n  \"fin_nuevo\": \"2026-10-12T11:00:00-04:00\",\n  \"solicitado_por_tipo\": \"PACIENTE\"\n}"
+            },
+            "url": "{{base_url}}/agenda/citas/{{cita_id}}/reprogramaciones"
+          }
+        },
+        {
+          "name": "GET - Historial de reprogramaciones",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/agenda/citas/{{cita_id}}/reprogramaciones"
+          }
+        },
+        {
+          "name": "POST - Crear notificación",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_cita\": {{cita_id}},\n  \"tipo\": \"RECORDATORIO\",\n  \"canal\": \"WHATSAPP\",\n  \"programada_para\": \"2026-10-05T08:00:00-04:00\"\n}"
+            },
+            "url": "{{base_url}}/agenda/notificaciones"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) pm.collectionVariables.set('notificacion_id', pm.response.json().id_notificacion);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET - Listar notificaciones",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/agenda/notificaciones?page=1&limit=20"
+          }
+        },
+        {
+          "name": "GET - Notificación por ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/agenda/notificaciones/{{notificacion_id}}"
+          }
+        },
+        {
+          "name": "PATCH - Actualizar notificación",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"estado\": \"ENVIADA\",\n  \"enviada_en\": \"2026-10-05T08:00:00-04:00\"\n}"
+            },
+            "url": "{{base_url}}/agenda/notificaciones/{{notificacion_id}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "17 - Ventas y pagos",
+      "item": [
+        {
+          "name": "POST - Emitir nota de venta",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_paciente\": {{paciente_id}},\n  \"numero_nota\": \"NV-0001\",\n  \"fecha_emision\": \"2026-10-01T12:00:00-04:00\",\n  \"subtotal\": \"100.00\",\n  \"descuento\": \"0.00\",\n  \"total\": \"100.00\",\n  \"detalles\": [{\"id_servicio\": {{servicio_id}}, \"descripcion_snapshot\": \"Servicio\", \"cantidad\": \"1.00\", \"precio_unitario\": \"100.00\", \"descuento\": \"0.00\", \"subtotal\": \"100.00\"}]\n}"
+            },
+            "url": "{{base_url}}/ventas/notas"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) { const data=pm.response.json(); pm.collectionVariables.set('nota_venta_id', data.id_nota_venta); if (data.detalles && data.detalles[0]) pm.collectionVariables.set('detalle_nota_id', data.detalles[0].id_detalle); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET - Listar notas",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/ventas/notas?page=1&limit=20"
+          }
+        },
+        {
+          "name": "GET - Nota por ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/ventas/notas/{{nota_venta_id}}"
+          }
+        },
+        {
+          "name": "GET - Detalles de nota",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/ventas/notas/{{nota_venta_id}}/detalles"
+          }
+        },
+        {
+          "name": "PATCH - Anular nota",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"estado\": \"ANULADA\"\n}" },
+            "url": "{{base_url}}/ventas/notas/{{nota_venta_id}}"
+          }
+        },
+        {
+          "name": "POST - Registrar pago",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_nota_venta\": {{nota_venta_id}},\n  \"monto\": \"100.00\",\n  \"metodo_pago\": \"QR\",\n  \"fecha_pago\": \"2026-10-01T12:10:00-04:00\"\n}"
+            },
+            "url": "{{base_url}}/ventas/pagos"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) pm.collectionVariables.set('pago_id', pm.response.json().id_pago);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET - Listar pagos",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/ventas/pagos?page=1&limit=20"
+          }
+        },
+        {
+          "name": "GET - Pago por ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/ventas/pagos/{{pago_id}}"
+          }
+        },
+        {
+          "name": "PATCH - Anular pago",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"estado\": \"ANULADO\"\n}" },
+            "url": "{{base_url}}/ventas/pagos/{{pago_id}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "18 - Inventario",
+      "item": [
+        {
+          "name": "POST - Crear producto",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"Aceite corporal\",\n  \"unidad_medida\": \"ml\",\n  \"es_insumo\": true,\n  \"stock_minimo\": \"100.00\"\n}"
+            },
+            "url": "{{base_url}}/inventario/productos"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) pm.collectionVariables.set('producto_id', pm.response.json().id_producto);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET - Listar productos",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/inventario/productos?page=1&limit=20"
+          }
+        },
+        {
+          "name": "GET - Producto por ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/inventario/productos/{{producto_id}}"
+          }
+        },
+        {
+          "name": "PATCH - Actualizar producto",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"es_vendible\": true\n}" },
+            "url": "{{base_url}}/inventario/productos/{{producto_id}}"
+          }
+        },
+        {
+          "name": "POST - Crear lote",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_producto\": {{producto_id}},\n  \"numero_lote\": \"L-001\",\n  \"cantidad_inicial\": \"500.00\",\n  \"fecha_ingreso\": \"2026-10-01\",\n  \"costo_unitario\": \"0.50\"\n}"
+            },
+            "url": "{{base_url}}/inventario/lotes"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) pm.collectionVariables.set('lote_id', pm.response.json().id_lote);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET - Listar lotes",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/inventario/lotes?page=1&limit=20"
+          }
+        },
+        {
+          "name": "GET - Lote por ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/inventario/lotes/{{lote_id}}"
+          }
+        },
+        {
+          "name": "GET - Stock del lote",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/inventario/lotes/{{lote_id}}/stock"
+          }
+        },
+        {
+          "name": "PATCH - Actualizar lote",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"estado\": \"DISPONIBLE\"\n}"
+            },
+            "url": "{{base_url}}/inventario/lotes/{{lote_id}}"
+          }
+        },
+        {
+          "name": "POST - Vincular producto a servicio",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_producto\": {{producto_id}},\n  \"cantidad_referencial\": \"10.00\"\n}"
+            },
+            "url": "{{base_url}}/inventario/servicios/{{servicio_id}}/productos"
+          }
+        },
+        {
+          "name": "GET - Productos del servicio",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/inventario/servicios/{{servicio_id}}/productos"
+          }
+        },
+        {
+          "name": "POST - Registrar movimiento",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_lote\": {{lote_id}},\n  \"tipo\": \"AJUSTE_ENTRADA\",\n  \"cantidad\": \"20.00\",\n  \"fecha_movimiento\": \"2026-10-01T09:00:00-04:00\"\n}"
+            },
+            "url": "{{base_url}}/inventario/movimientos"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) pm.collectionVariables.set('movimiento_id', pm.response.json().id_movimiento);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET - Listar movimientos",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/inventario/movimientos?page=1&limit=20"
+          }
+        },
+        {
+          "name": "GET - Movimiento por ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/inventario/movimientos/{{movimiento_id}}"
+          }
+        },
+        {
+          "name": "POST - Registrar consumo de sesión",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_sesion\": {{sesion_id}},\n  \"id_lote\": {{lote_id}},\n  \"cantidad\": \"10.00\"\n}"
+            },
+            "url": "{{base_url}}/inventario/consumos-sesion"
+          }
+        },
+        {
+          "name": "GET - Listar consumos",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/inventario/consumos-sesion?page=1&limit=20"
+          }
+        },
+        {
+          "name": "POST - Emitir nota con producto para salida",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_paciente\": {{paciente_id}},\n  \"numero_nota\": \"NV-PROD-001\",\n  \"fecha_emision\": \"2026-10-01T12:30:00-04:00\",\n  \"detalles\": [{\"id_producto\": {{producto_id}}, \"cantidad\": \"1.00\", \"precio_unitario\": \"50.00\"}]\n}"
+            },
+            "url": "{{base_url}}/ventas/notas"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) { const data=pm.response.json(); pm.collectionVariables.set('nota_venta_id', data.id_nota_venta); if (data.detalles && data.detalles[0]) pm.collectionVariables.set('detalle_nota_id', data.detalles[0].id_detalle); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST - Registrar salida por venta",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_detalle\": {{detalle_nota_id}},\n  \"id_lote\": {{lote_id}},\n  \"cantidad\": \"1.00\"\n}"
+            },
+            "url": "{{base_url}}/inventario/salidas-venta"
+          }
+        },
+        {
+          "name": "GET - Listar salidas por venta",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/inventario/salidas-venta?page=1&limit=20"
+          }
+        }
+      ]
+    },
+    {
+      "name": "19 - Empresa y configuración",
+      "item": [
+        {
+          "name": "POST - Crear empresa",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre_comercial\": \"Warmi\",\n  \"moneda\": \"BOB\"\n}"
+            },
+            "url": "{{base_url}}/empresa"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) pm.collectionVariables.set('empresa_id', pm.response.json().id_empresa);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET - Listar empresas",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/empresa?page=1&limit=20"
+          }
+        },
+        {
+          "name": "GET - Empresa por ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/empresa/{{empresa_id}}"
+          }
+        },
+        {
+          "name": "PATCH - Actualizar empresa",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"telefono1\": \"70000000\"\n}"
+            },
+            "url": "{{base_url}}/empresa/{{empresa_id}}"
+          }
+        },
+        {
+          "name": "POST - Crear configuración documental",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_empresa\": {{empresa_id}},\n  \"encabezado\": \"Warmi\",\n  \"mostrar_logo\": true\n}"
+            },
+            "url": "{{base_url}}/empresa/configuraciones-documentos"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) pm.collectionVariables.set('config_documento_id', pm.response.json().id_configuracion);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET - Listar configuraciones",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/empresa/configuraciones-documentos/listar?page=1&limit=20"
+          }
+        },
+        {
+          "name": "GET - Configuración por ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/empresa/configuraciones-documentos/{{config_documento_id}}"
+          }
+        },
+        {
+          "name": "PATCH - Actualizar configuración",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"pie_pagina\": \"Gracias por su preferencia\"\n}"
+            },
+            "url": "{{base_url}}/empresa/configuraciones-documentos/{{config_documento_id}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "20 - Configuración auditoría",
       "item": [
         {
           "name": "POST - Crear",
@@ -1507,7 +3521,7 @@
       ]
     },
     {
-      "name": "11 - Auditoria (consulta)",
+      "name": "21 - Auditoría (consulta)",
       "item": [
         {
           "name": "GET - Listar",
@@ -1550,14 +3564,94 @@
       ]
     },
     {
-      "name": "12 - Accesos (consulta)",
+      "name": "22 - Accesos de usuarios",
+      "description": "Las dos solicitudes DELETE son destructivas. Ejecutalas solo al final de las pruebas de accesos.",
       "item": [
         {
-          "name": "GET - Listar",
+          "name": "GET - Historial general",
           "request": {
             "method": "GET",
             "header": [],
-            "url": "{{base_url}}/accesos-usuario"
+            "url": "{{base_url}}/accesos-usuario?page=1&limit=20"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "if (pm.response.code === 200) { const data = pm.response.json().data; if (data.length) pm.collectionVariables.set('acceso_id', data[0].id_acceso); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET - Accesos exitosos",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/accesos-usuario/exitosos?page=1&limit=20"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Solo accesos exitosos', () => pm.expect(pm.response.json().data.every((row) => row.login_exitoso === true)).to.be.true);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET - Accesos fallidos",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/accesos-usuario/fallidos?page=1&limit=20"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Solo accesos fallidos', () => pm.expect(pm.response.json().data.every((row) => row.login_exitoso === false)).to.be.true);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET - Historial por usuario",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/accesos-usuario/usuario/{{usuario_id}}?page=1&limit=20"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET - Último acceso por usuario",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/accesos-usuario/ultimos"
           },
           "event": [
             {
@@ -1585,6 +3679,70 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('HTTP 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "DELETE - Historial por usuario (destructivo)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{base_url}}/accesos-usuario/usuario/{{usuario_id}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "DELETE - Todo el historial (destructivo)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{base_url}}/accesos-usuario"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "23 - Cerrar sesión",
+      "description": "Ejecuta esta carpeta al final: el JWT actual queda invalidado.",
+      "item": [
+        {
+          "name": "POST - Logout",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{base_url}}/auth/logout"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "if (pm.response.code === 200) pm.collectionVariables.unset('token');"
                 ]
               }
             }

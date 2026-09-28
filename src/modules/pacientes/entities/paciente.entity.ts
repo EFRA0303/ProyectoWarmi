@@ -13,6 +13,7 @@ import type { Relation } from 'typeorm';
 import { EstadoGeneral } from '../../../common/enums/estado-general.enum.js';
 import type { Persona } from '../../personas/entities/persona.entity.js';
 import type { Usuario } from '../../usuarios/entities/usuario.entity.js';
+import type { Historial } from '../../historiales/entities/historial.entity.js';
 
 @Entity('pacientes')
 @Check('CHK_pacientes_id_paciente', '"id_paciente" > 0')
@@ -59,6 +60,9 @@ export class Paciente {
   @OneToOne('Persona', { nullable: false, onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'id_persona' })
   persona: Relation<Persona>;
+
+  @OneToOne('Historial', 'paciente')
+  historial: Relation<Historial> | null;
 
   // Relaciones de auditoría
   @ManyToOne('Usuario', { nullable: false, onDelete: 'RESTRICT' })
