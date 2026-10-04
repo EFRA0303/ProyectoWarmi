@@ -1,9 +1,13 @@
-import { IsEmail, MaxLength, IsNotEmpty, IsString } from 'class-validator';
+import { MaxLength, IsNotEmpty, IsString } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class LoginDto {
-  @ApiProperty({ example: 'usuario@warmi.local' })
-  @IsEmail()
+  @ApiProperty({
+    example: 'usuario@warmi.local',
+    description: 'Correo de acceso o nombre de usuario',
+  })
+  @IsNotEmpty()
+  @IsString()
   @MaxLength(150)
   correo_acceso: string;
 

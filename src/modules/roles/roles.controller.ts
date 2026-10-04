@@ -7,6 +7,7 @@ import {
   ParseIntPipe,
   Patch,
   Post,
+  Put,
   Query,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
@@ -20,6 +21,8 @@ import type { JwtPayload } from '../../common/interfaces/jwt-payload.interface.j
 import { BajaDto } from '../../common/dto/baja.dto.js';
 import { AssignPermissionDto } from './dto/assign-permission.dto.js';
 import { AssignmentsService } from '../../common/utils/assignments.service.js';
+import { RegistroCompletoRolDto } from './dto/registro-completo-rol.dto.js';
+import { SincronizarPermisosDto } from './dto/sincronizar-permisos.dto.js';
 
 @ApiBearerAuth('access-token')
 @Controller('roles')
@@ -45,6 +48,36 @@ export class RolesController {
   @ApiOperation({ summary: 'Listar los permisos asignados a un rol' })
   permissions(@Param('id', ParseIntPipe) id: number) {
     return this.assignments.forRole(id);
+  }
+  @Put(':id/permisos')
+  @Permissions('roles.asignar')
+  @ApiOperation({ summary: 'Reemplazar los permisos asignados a un rol' })
+  syncPermissions(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: SincronizarPermisosDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.assignments.syncRole(id, dto.id_permisos, user.sub);
+  }
+
+  @Post('registro-completo')
+  @Permissions('roles.crear', 'roles.asignar')
+  @ApiOperation({ summary: 'Crear un rol con sus permisos predeterminados' })
+  registerComplete(
+    @Body() dto: RegistroCompletoRolDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.service.registerComplete(dto, user.sub);
+  }
+  @Put(':id/registro-completo')
+  @Permissions('roles.actualizar', 'roles.asignar')
+  @ApiOperation({ summary: 'Actualizar un rol y todos sus permisos' })
+  updateComplete(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: RegistroCompletoRolDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.service.updateComplete(id, dto, user.sub);
   }
 
   @Post()

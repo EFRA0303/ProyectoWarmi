@@ -15,6 +15,7 @@ import { DisponibilidadPersonal1790400000000 } from '../dist/database/migrations
 import { CatalogoServicios1790500000000 } from '../dist/database/migrations/1790500000000-CatalogoServicios.js';
 import { DomainModulesFiveToEleven1790600000000 } from '../dist/database/migrations/1790600000000-DomainModulesFiveToEleven.js';
 import { BusinessIntegrity1790700000000 } from '../dist/database/migrations/1790700000000-BusinessIntegrity.js';
+import { UserPresence1790800000000 } from '../dist/database/migrations/1790800000000-UserPresence.js';
 import { hashPassword } from '../dist/common/utils/password.js';
 import { Usuario } from '../dist/modules/usuarios/entities/usuario.entity.js';
 import { MailService } from '../dist/modules/auth/mail.service.js';
@@ -56,6 +57,7 @@ describe('Postman con PostgreSQL temporal, sin datos en la base de trabajo', () 
         CatalogoServicios1790500000000,
         DomainModulesFiveToEleven1790600000000,
         BusinessIntegrity1790700000000,
+        UserPresence1790800000000,
       ],
     });
     await db.initialize();
@@ -144,12 +146,16 @@ describe('Postman con PostgreSQL temporal, sin datos en la base de trabajo', () 
       .expect(200);
     token = login.body.access_token;
     expect(token).toBeTypeOf('string');
+    expect(login.body.expires_in).toBe(3600);
     const me = await api()
       .get('/auth/me')
       .set('Authorization', auth())
       .expect(200);
     expect(me.body).not.toHaveProperty('contrasena_hash');
     expect(me.body).not.toHaveProperty('token_recuperacion_hash');
+    expect(me.body.permisos).toEqual(
+      expect.arrayContaining(['usuarios.leer', 'usuarios.actualizar']),
+    );
   });
 
   it('registra intentos, filtra historiales y cierra la sesion exacta', async () => {
@@ -347,12 +353,78 @@ describe('Postman con PostgreSQL temporal, sin datos en la base de trabajo', () 
         id_persona: personId,
         id_rol: roleId,
         correo_acceso: 'user@test.local',
+        nombre_usuario: 'usuario.prueba',
         contrasena: password,
       })
       .expect(201);
     userId = user.body.id_usuario;
     expect(user.body).not.toHaveProperty('contrasena_hash');
     expect(user.body.created_by).toBe(1);
+    const users = await api()
+      .get('/usuarios?search=ana%20maria&estado=ACTIVO&limit=1')
+      .set('Authorization', auth())
+      .expect(200);
+    expect(users.body).toEqual(
+      expect.objectContaining({ total: 1, page: 1, limit: 1 }),
+    );
+    expect(users.body.data[0]).toEqual(
+      expect.objectContaining({
+        id_usuario: userId,
+        correo_acceso: 'user@test.local',
+        persona: expect.objectContaining({
+          nombre: 'Ana Maria',
+          ap_paterno: 'Perez',
+        }),
+        rol: expect.objectContaining({ nombre: 'LECTOR' }),
+        creador: {
+          id_usuario: 1,
+          persona: expect.objectContaining({
+            nombre: 'Admin',
+            ap_paterno: 'Prueba',
+          }),
+        },
+      }),
+    );
+    const userDetail = await api()
+      .get('/usuarios/' + userId)
+      .set('Authorization', auth())
+      .expect(200);
+    expect(userDetail.body).toEqual(
+      expect.objectContaining({
+        id_usuario: userId,
+        persona: expect.objectContaining({ id_persona: personId }),
+        rol: expect.objectContaining({ id_rol: roleId }),
+        creador: {
+          id_usuario: 1,
+          persona: expect.objectContaining({
+            nombre: 'Admin',
+            ap_paterno: 'Prueba',
+          }),
+        },
+      }),
+    );
+    const patientUsers = await api()
+      .get('/usuarios?tipo=PACIENTE&limit=1')
+      .set('Authorization', auth())
+      .expect(200);
+    expect(patientUsers.body).toEqual(
+      expect.objectContaining({ total: 1, page: 1, limit: 1 }),
+    );
+    expect(patientUsers.body.data[0]).toEqual(
+      expect.objectContaining({
+        id_usuario: userId,
+        persona: expect.objectContaining({
+          paciente: expect.objectContaining({ id_paciente: patientId }),
+        }),
+      }),
+    );
+    for (const estado of ['BAJA', 'BLOQUEADO']) {
+      const filtered = await api()
+        .get('/usuarios?estado=' + estado)
+        .set('Authorization', auth())
+        .expect(200);
+      expect(filtered.body.total).toBe(0);
+    }
     const [stored] = await db.query(
       'SELECT contrasena_hash FROM usuarios WHERE id_usuario = $1',
       [userId],
@@ -363,6 +435,26 @@ describe('Postman con PostgreSQL temporal, sin datos en la base de trabajo', () 
       .send({ correo_acceso: 'user@test.local', contrasena: password })
       .expect(200);
     limitedToken = login.body.access_token;
+    const usernameLogin = await api()
+      .post('/auth/login')
+      .send({ correo_acceso: 'usuario.prueba', contrasena: password })
+      .expect(200);
+    expect(usernameLogin.body.access_token).toBeTruthy();
+    await api()
+      .post('/auth/activity')
+      .set('Authorization', 'Bearer ' + limitedToken)
+      .expect(200, { en_linea: true });
+    const onlineUser = await api()
+      .get('/usuarios?search=user@test.local')
+      .set('Authorization', auth())
+      .expect(200);
+    expect(onlineUser.body.data[0]).toEqual(
+      expect.objectContaining({
+        id_usuario: userId,
+        en_linea: true,
+        ultima_actividad_en: expect.any(String),
+      }),
+    );
     await api()
       .get('/personas')
       .set('Authorization', 'Bearer ' + limitedToken)
@@ -426,6 +518,13 @@ describe('Postman con PostgreSQL temporal, sin datos en la base de trabajo', () 
       .set('Authorization', auth())
       .send({ id_permiso: edit.id_permiso })
       .expect(201);
+    const effective = await api()
+      .get('/auth/me')
+      .set('Authorization', 'Bearer ' + limitedToken)
+      .expect(200);
+    expect(effective.body.permisos).toEqual(
+      expect.arrayContaining(['personas.leer', 'personas.actualizar']),
+    );
     const changed = await api()
       .patch('/personas/' + personId)
       .set('Authorization', 'Bearer ' + limitedToken)
@@ -443,6 +542,109 @@ describe('Postman con PostgreSQL temporal, sin datos en la base de trabajo', () 
       .expect(200);
   });
 
+  it('crea roles con permisos y sincroniza excepciones individuales', async () => {
+    const permissions = await db.query(
+      "SELECT id_permiso, permiso FROM permisos WHERE permiso IN ('personas.leer', 'personas.actualizar') ORDER BY permiso",
+    );
+    const ids = permissions.map((permission: { id_permiso: number }) =>
+      Number(permission.id_permiso),
+    );
+    const created = await api()
+      .post('/roles/registro-completo')
+      .set('Authorization', auth())
+      .send({
+        rol: {
+          nombre: 'ROL CONFIGURABLE',
+          descripcion: 'Creado junto con sus permisos',
+        },
+        id_permisos: ids,
+      })
+      .expect(201);
+    const initial = await api()
+      .get('/roles/' + created.body.id_rol + '/permisos')
+      .set('Authorization', auth())
+      .expect(200);
+    expect(initial.body).toHaveLength(2);
+
+    const updatedRole = await api()
+      .put('/roles/' + created.body.id_rol + '/registro-completo')
+      .set('Authorization', auth())
+      .send({
+        rol: {
+          nombre: 'ROL CONFIGURABLE EDITADO',
+          descripcion: 'Nombre y permisos actualizados juntos',
+        },
+        id_permisos: ids,
+      })
+      .expect(200);
+    expect(updatedRole.body).toEqual(
+      expect.objectContaining({
+        nombre: 'ROL CONFIGURABLE EDITADO',
+        descripcion: 'Nombre y permisos actualizados juntos',
+        updated_by: 1,
+      }),
+    );
+
+    const createdPermission = await api()
+      .post('/permisos')
+      .set('Authorization', auth())
+      .send({
+        permiso: 'pruebas.especial',
+        descripcion: 'Permiso creado desde la gestion del sistema',
+      })
+      .expect(201);
+    expect(createdPermission.body.permiso).toBe('pruebas.especial');
+    await api()
+      .post('/permisos')
+      .set('Authorization', auth())
+      .send({ permiso: 'Formato Invalido' })
+      .expect(400);
+
+    await api()
+      .put('/roles/' + created.body.id_rol + '/permisos')
+      .set('Authorization', auth())
+      .send({ id_permisos: [ids[0]] })
+      .expect(200);
+    const synchronized = await api()
+      .get('/roles/' + created.body.id_rol + '/permisos')
+      .set('Authorization', auth())
+      .expect(200);
+    expect(synchronized.body).toHaveLength(1);
+    expect(synchronized.body[0].id_permiso).toBe(ids[0]);
+
+    await api()
+      .put('/permisos/usuarios/' + userId)
+      .set('Authorization', auth())
+      .send({
+        excepciones: [
+          { id_permiso: ids[0], permitido: false },
+          { id_permiso: ids[1], permitido: true },
+        ],
+      })
+      .expect(200);
+    const exceptions = await api()
+      .get('/permisos/usuarios/' + userId)
+      .set('Authorization', auth())
+      .expect(200);
+    expect(exceptions.body).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id_permiso: ids[0], permitido: false }),
+        expect.objectContaining({ id_permiso: ids[1], permitido: true }),
+      ]),
+    );
+
+    await api()
+      .put('/permisos/usuarios/' + userId)
+      .set('Authorization', auth())
+      .send({ excepciones: [] })
+      .expect(200);
+    const inherited = await api()
+      .get('/permisos/usuarios/' + userId)
+      .set('Authorization', auth())
+      .expect(200);
+    expect(inherited.body).toHaveLength(0);
+  });
+
   it('crea personal y conserva al responsable al modificarlo', async () => {
     const employee = await api()
       .post('/personal')
@@ -456,6 +658,19 @@ describe('Postman con PostgreSQL temporal, sin datos en la base de trabajo', () 
       .expect(201);
     expect(employee.body.created_by).toBe(1);
     staffId = employee.body.id_personal;
+    const staffUsers = await api()
+      .get('/usuarios?tipo=PERSONAL&limit=1')
+      .set('Authorization', auth())
+      .expect(200);
+    expect(staffUsers.body).toEqual(
+      expect.objectContaining({ total: 1, page: 1, limit: 1 }),
+    );
+    expect(staffUsers.body.data[0]).toEqual(
+      expect.objectContaining({
+        id_usuario: userId,
+        personal: expect.objectContaining({ id_personal: staffId }),
+      }),
+    );
     const down = await api()
       .patch('/personal/' + employee.body.id_personal + '/baja')
       .set('Authorization', auth())
@@ -468,6 +683,322 @@ describe('Postman con PostgreSQL temporal, sin datos en la base de trabajo', () 
       .set('Authorization', auth())
       .send({ estado: 'ACTIVO' })
       .expect(200);
+  });
+
+  it('registra un paciente completo de forma atomica y permite consultarlo', async () => {
+    const payload = {
+      persona: {
+        nombre: 'pACIENTE',
+        ap_paterno: 'cOMPLETA',
+        ap_materno: 'pRUEBA',
+        ci: 'CI-PAC-COMP',
+        fecha_nac: '1995-05-10',
+        genero: 'FEMENINO',
+        telefono1: '71110001',
+        direccion: 'Direccion de prueba',
+      },
+      ocupacion: 'Arquitecta',
+    };
+    await api()
+      .post('/pacientes/registro-completo')
+      .set('Authorization', 'Bearer ' + limitedToken)
+      .send(payload)
+      .expect(403);
+
+    const created = await api()
+      .post('/pacientes/registro-completo')
+      .set('Authorization', auth())
+      .send(payload)
+      .expect(201);
+    expect(created.body).toEqual(
+      expect.objectContaining({
+        ocupacion: 'Arquitecta',
+        created_by: 1,
+        persona: expect.objectContaining({
+          nombre: 'Paciente',
+          ap_paterno: 'Completa',
+          created_by: 1,
+        }),
+      }),
+    );
+    const patientPersonId = created.body.persona.id_persona;
+    const linkedUsers = await db.query(
+      'SELECT id_usuario FROM usuarios WHERE id_persona = $1',
+      [patientPersonId],
+    );
+    expect(linkedUsers).toHaveLength(0);
+    const unavailablePersonData = await api()
+      .get('/personas/disponibilidad?ci=CI-PAC-COMP&telefono1=71110001')
+      .set('Authorization', auth())
+      .expect(200);
+    expect(unavailablePersonData.body).toEqual({
+      ci_disponible: false,
+      telefono1_disponible: false,
+    });
+    const availablePersonData = await api()
+      .get('/personas/disponibilidad?ci=CI-NUEVO&telefono1=71119999')
+      .set('Authorization', auth())
+      .expect(200);
+    expect(availablePersonData.body).toEqual({
+      ci_disponible: true,
+      telefono1_disponible: true,
+    });
+
+    await api()
+      .post('/pacientes/registro-completo')
+      .set('Authorization', auth())
+      .send({
+        ...payload,
+        persona: {
+          ...payload.persona,
+          ci: 'CI-PAC-ROLLBACK',
+        },
+      })
+      .expect(409);
+    const rolledBackPeople = await db.query(
+      'SELECT id_persona FROM personas WHERE ci = $1',
+      ['CI-PAC-ROLLBACK'],
+    );
+    expect(rolledBackPeople).toHaveLength(0);
+
+    const paginated = await api()
+      .get('/pacientes?estado=ACTIVO&limit=1')
+      .set('Authorization', auth())
+      .expect(200);
+    expect(paginated.body.total).toBeGreaterThanOrEqual(2);
+    expect(paginated.body.data).toHaveLength(1);
+    const searched = await api()
+      .get('/pacientes?search=71110001&estado=ACTIVO&limit=1')
+      .set('Authorization', auth())
+      .expect(200);
+    expect(searched.body).toEqual(
+      expect.objectContaining({ total: 1, page: 1, limit: 1 }),
+    );
+    expect(searched.body.data[0].persona.ci).toBe('CI-PAC-COMP');
+    await api()
+      .patch(
+        '/pacientes/' + created.body.id_paciente + '/actualizacion-completa',
+      )
+      .set('Authorization', 'Bearer ' + limitedToken)
+      .send({ persona: payload.persona, paciente: { ocupacion: 'Medica' } })
+      .expect(403);
+    const updated = await api()
+      .patch(
+        '/pacientes/' + created.body.id_paciente + '/actualizacion-completa',
+      )
+      .set('Authorization', auth())
+      .send({
+        persona: { ...payload.persona, nombre: 'Paciente Editada' },
+        paciente: { ocupacion: 'Medica' },
+      })
+      .expect(200);
+    expect(updated.body).toEqual(
+      expect.objectContaining({
+        ocupacion: 'Medica',
+        updated_by: 1,
+        persona: expect.objectContaining({
+          nombre: 'Paciente Editada',
+          updated_by: 1,
+        }),
+      }),
+    );
+    await api()
+      .patch('/pacientes/' + created.body.id_paciente + '/baja')
+      .set('Authorization', auth())
+      .send({ motivo_baja: 'Prueba de filtro' })
+      .expect(200);
+    const inactive = await api()
+      .get('/pacientes?search=CI-PAC-COMP&estado=BAJA')
+      .set('Authorization', auth())
+      .expect(200);
+    expect(inactive.body.total).toBe(1);
+    expect(inactive.body.data[0].estado).toBe('BAJA');
+  });
+
+  it('registra personal completo con rollback, cifrado y listados enriquecidos', async () => {
+    const payload = {
+      persona: {
+        nombre: 'eMPLEADA',
+        ap_paterno: 'iNTEGRAL',
+        ap_materno: 'pRUEBA',
+        ci: 'CI-PER-COMP',
+        fecha_nac: '1992-03-15',
+        genero: 'FEMENINO',
+        telefono1: '72220001',
+      },
+      usuario: {
+        id_rol: roleId,
+        correo_acceso: 'EMPLEADA.COMP@example.com',
+        nombre_usuario: 'empleada.comp',
+        contrasena: 'Personal-segura-2026!',
+      },
+      personal: {
+        profesion: 'Nutricion',
+        cargo: 'Nutricionista',
+        fecha_ingreso: '2026-09-29',
+      },
+    };
+    await api()
+      .post('/personal/registro-completo')
+      .set('Authorization', 'Bearer ' + limitedToken)
+      .send(payload)
+      .expect(403);
+
+    const invalidRolePayload = {
+      ...payload,
+      persona: {
+        ...payload.persona,
+        ci: 'CI-PER-ROLLBACK',
+        telefono1: '72220002',
+      },
+      usuario: {
+        ...payload.usuario,
+        id_rol: 32767,
+        correo_acceso: 'rollback@example.com',
+        nombre_usuario: 'rollback.personal',
+      },
+    };
+    await api()
+      .post('/personal/registro-completo')
+      .set('Authorization', auth())
+      .send(invalidRolePayload)
+      .expect(400);
+    expect(
+      await db.query('SELECT id_persona FROM personas WHERE ci = $1', [
+        'CI-PER-ROLLBACK',
+      ]),
+    ).toHaveLength(0);
+    expect(
+      await db.query(
+        'SELECT id_usuario FROM usuarios WHERE correo_acceso = $1',
+        ['rollback@example.com'],
+      ),
+    ).toHaveLength(0);
+
+    const created = await api()
+      .post('/personal/registro-completo')
+      .set('Authorization', auth())
+      .send(payload)
+      .expect(201);
+    expect(created.body).toEqual(
+      expect.objectContaining({
+        profesion: 'Nutricion',
+        cargo: 'Nutricionista',
+        created_by: 1,
+        usuario: expect.objectContaining({
+          correo_acceso: 'empleada.comp@example.com',
+          created_by: 1,
+          persona: expect.objectContaining({
+            nombre: 'Empleada',
+            created_by: 1,
+          }),
+          rol: expect.objectContaining({ id_rol: roleId }),
+        }),
+      }),
+    );
+    expect(JSON.stringify(created.body)).not.toContain('contrasena_hash');
+    const [storedAccount] = await db.query(
+      'SELECT contrasena_hash FROM usuarios WHERE id_usuario = $1',
+      [created.body.usuario.id_usuario],
+    );
+    expect(storedAccount.contrasena_hash).not.toBe(payload.usuario.contrasena);
+    const unavailableAccountData = await api()
+      .get(
+        '/usuarios/disponibilidad?correo_acceso=EMPLEADA.COMP@example.com&nombre_usuario=empleada.comp',
+      )
+      .set('Authorization', auth())
+      .expect(200);
+    expect(unavailableAccountData.body).toEqual({
+      correo_disponible: false,
+      nombre_usuario_disponible: false,
+    });
+
+    const paginated = await api()
+      .get('/personal?estado=ACTIVO&limit=1')
+      .set('Authorization', auth())
+      .expect(200);
+    expect(paginated.body.total).toBeGreaterThanOrEqual(2);
+    expect(paginated.body.data).toHaveLength(1);
+    const searched = await api()
+      .get('/personal?search=nutricion&estado=ACTIVO&limit=1')
+      .set('Authorization', auth())
+      .expect(200);
+    expect(searched.body).toEqual(
+      expect.objectContaining({ total: 1, page: 1, limit: 1 }),
+    );
+    expect(searched.body.data[0]).toEqual(
+      expect.objectContaining({
+        id_personal: created.body.id_personal,
+        usuario: expect.objectContaining({
+          persona: expect.objectContaining({ ci: 'CI-PER-COMP' }),
+          rol: expect.objectContaining({ id_rol: roleId }),
+        }),
+      }),
+    );
+    expect(JSON.stringify(searched.body)).not.toContain('contrasena_hash');
+    await api()
+      .patch(
+        '/personal/' + created.body.id_personal + '/actualizacion-completa',
+      )
+      .set('Authorization', 'Bearer ' + limitedToken)
+      .send({
+        persona: payload.persona,
+        usuario: {
+          correo_acceso: 'empleada.editada@example.com',
+          nombre_usuario: 'empleada.editada',
+        },
+        personal: {
+          profesion: 'Fisioterapia',
+          cargo: 'Fisioterapeuta',
+          fecha_ingreso: '2026-09-29',
+        },
+      })
+      .expect(403);
+    const updated = await api()
+      .patch(
+        '/personal/' + created.body.id_personal + '/actualizacion-completa',
+      )
+      .set('Authorization', auth())
+      .send({
+        persona: { ...payload.persona, nombre: 'Empleada Editada' },
+        usuario: {
+          correo_acceso: 'EMPLEADA.EDITADA@example.com',
+          nombre_usuario: 'empleada.editada',
+        },
+        personal: {
+          profesion: 'Fisioterapia',
+          cargo: 'Fisioterapeuta',
+          fecha_ingreso: '2026-09-29',
+        },
+      })
+      .expect(200);
+    expect(updated.body).toEqual(
+      expect.objectContaining({
+        profesion: 'Fisioterapia',
+        cargo: 'Fisioterapeuta',
+        updated_by: 1,
+        usuario: expect.objectContaining({
+          correo_acceso: 'empleada.editada@example.com',
+          nombre_usuario: 'empleada.editada',
+          updated_by: 1,
+          persona: expect.objectContaining({
+            nombre: 'Empleada Editada',
+            updated_by: 1,
+          }),
+        }),
+      }),
+    );
+    await api()
+      .patch('/personal/' + created.body.id_personal + '/baja')
+      .set('Authorization', auth())
+      .send({ motivo_baja: 'Prueba de filtro' })
+      .expect(200);
+    const inactive = await api()
+      .get('/personal?search=empleada.editada@example.com&estado=BAJA')
+      .set('Authorization', auth())
+      .expect(200);
+    expect(inactive.body.total).toBe(1);
+    expect(inactive.body.data[0].estado).toBe('BAJA');
   });
 
   it('gestiona horarios, extras y bloqueos sin solapamientos', async () => {
@@ -922,6 +1453,25 @@ describe('Postman con PostgreSQL temporal, sin datos en la base de trabajo', () 
         .send({})
         .expect(404);
     }
+    await api()
+      .patch('/usuarios/' + userId)
+      .set('Authorization', auth())
+      .send({ nombre_usuario: 'usuario-auditado' })
+      .expect(200);
+    const audit = await api()
+      .get('/auditoria?limit=100')
+      .set('Authorization', auth())
+      .expect(200);
+    expect(audit.body.data).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          accion: 'USUARIO_ACTUALIZADO',
+          id_usuario_accion: 1,
+          id_usuario_afectado: userId,
+          entidad: 'usuarios',
+        }),
+      ]),
+    );
   });
 
   it('rechaza JWT expirados, roles en BAJA y bloquea cinco intentos fallidos', async () => {
@@ -954,10 +1504,11 @@ describe('Postman con PostgreSQL temporal, sin datos en la base de trabajo', () 
           contrasena: 'Incorrecta-2026',
         })
         .expect(401);
-    await api()
+    const blockedLogin = await api()
       .post('/auth/login')
       .send({ correo_acceso: 'user@test.local', contrasena: password })
       .expect(401);
+    expect(blockedLogin.body.message).toContain('Vuelve a intentarlo en');
     await db.query(
       'UPDATE usuarios SET bloqueado_hasta = $1 WHERE id_usuario = $2',
       [new Date(Date.now() - 1000), userId],

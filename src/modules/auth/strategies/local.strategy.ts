@@ -14,9 +14,9 @@ export class LocalStrategy extends PassportStrategy(Strategy) {
       passReqToCallback: true,
     });
   }
-  validate(request: Request, email: string, password: string) {
+  validate(request: Request, identifier: string, password: string) {
     return this.auth.validateCredentials(
-      email,
+      identifier,
       password,
       requestMetadata(request),
     );

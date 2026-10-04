@@ -7,6 +7,7 @@ import {
   ParseIntPipe,
   Patch,
   Post,
+  Put,
   Query,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
@@ -20,6 +21,7 @@ import type { JwtPayload } from '../../common/interfaces/jwt-payload.interface.j
 import { BajaDto } from '../../common/dto/baja.dto.js';
 import { AssignUserPermissionDto } from './dto/assign-user-permission.dto.js';
 import { AssignmentsService } from '../../common/utils/assignments.service.js';
+import { SincronizarPermisosUsuarioDto } from './dto/sincronizar-permisos-usuario.dto.js';
 
 @ApiBearerAuth('access-token')
 @Controller('permisos')
@@ -53,6 +55,16 @@ export class PermisosController {
   @ApiOperation({ summary: 'Listar permisos individuales de un usuario' })
   permissions(@Param('id', ParseIntPipe) id: number) {
     return this.assignments.forUser(id);
+  }
+  @Put('usuarios/:id')
+  @Permissions('permisos.asignar')
+  @ApiOperation({ summary: 'Reemplazar las excepciones de permisos de un usuario' })
+  syncUserPermissions(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: SincronizarPermisosUsuarioDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.assignments.syncUser(id, dto.excepciones, user.sub);
   }
 
   @Post()

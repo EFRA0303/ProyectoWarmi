@@ -19,6 +19,8 @@ import { AccesosUsuarioService } from '../accesos-usuario/accesos-usuario.servic
 import { AuditEvent } from '../../common/enums/audit-event.enum.js';
 import type { RequestMetadata } from '../../common/interfaces/request-metadata.interface.js';
 import { Auditoria } from '../auditoria/entities/auditoria.entity.js';
+import { EffectivePermissionsService } from './effective-permissions.service.js';
+import { jwtConfig } from '../../config/jwt.config.js';
 
 @Injectable()
 export class AuthService {
@@ -30,18 +32,23 @@ export class AuthService {
     @Inject(MailService) private readonly mail: MailService,
     @Inject(AccesosUsuarioService)
     private readonly accesses: AccesosUsuarioService,
+    @Inject(EffectivePermissionsService)
+    private readonly permissions: EffectivePermissionsService,
   ) {}
   async validateCredentials(
-    email: string,
+    rawIdentifier: string,
     password: string,
     metadata: RequestMetadata,
   ): Promise<JwtPayload> {
     const identifier =
-      typeof email === 'string' ? email.toLowerCase().slice(0, 150) : null;
+      typeof rawIdentifier === 'string'
+        ? rawIdentifier.trim().toLowerCase().slice(0, 150)
+        : null;
     if (
-      typeof email !== 'string' ||
+      typeof rawIdentifier !== 'string' ||
       typeof password !== 'string' ||
-      email.length > 150 ||
+      !identifier ||
+      rawIdentifier.length > 150 ||
       password.length > 72
     ) {
       await this.db.transaction((manager) =>
@@ -55,14 +62,17 @@ export class AuthService {
       );
       throw new UnauthorizedException('Credenciales invalidas');
     }
+    let lockExpiresAt = 0;
+    let automaticLock = false;
     const payload = await this.db.transaction(async (manager) => {
       const repo = manager.getRepository(Usuario);
       const row = await repo
         .createQueryBuilder('u')
         .addSelect('u.contrasena_hash')
-        .where('LOWER(u.correo_acceso) = :email', {
-          email: email.toLowerCase(),
-        })
+        .where(
+          '(LOWER(u.correo_acceso) = :identifier OR LOWER(u.nombre_usuario) = :identifier)',
+          { identifier },
+        )
         .setLock('pessimistic_write')
         .getOne();
       if (!row) {
@@ -86,6 +96,8 @@ export class AuthService {
         return null;
       }
       if (row.bloqueado_hasta && row.bloqueado_hasta > new Date()) {
+        lockExpiresAt = row.bloqueado_hasta.getTime();
+        automaticLock = row.intentos_fallidos >= 5;
         await this.accesses.record(manager, AuditEvent.LOGIN_FALLIDO, {
           userId: row.id_usuario,
           identifier,
@@ -98,9 +110,10 @@ export class AuthService {
       if (!(await verifyPassword(password, row.contrasena_hash))) {
         const count = row.bloqueado_hasta ? 1 : row.intentos_fallidos + 1;
         const blocked = count >= 5;
+        const blockedUntil = blocked ? new Date(Date.now() + 900000) : null;
         await repo.update(row.id_usuario, {
           intentos_fallidos: Math.min(count, 255),
-          bloqueado_hasta: blocked ? new Date(Date.now() + 900000) : null,
+          bloqueado_hasta: blockedUntil,
         });
         await this.accesses.record(manager, AuditEvent.LOGIN_FALLIDO, {
           userId: row.id_usuario,
@@ -109,6 +122,10 @@ export class AuthService {
           failureReason: 'CREDENCIALES_INVALIDAS',
           ...metadata,
         });
+        if (blockedUntil) {
+          lockExpiresAt = blockedUntil.getTime();
+          automaticLock = true;
+        }
         if (blocked)
           await this.accesses.record(manager, AuditEvent.USUARIO_BLOQUEADO, {
             userId: row.id_usuario,
@@ -138,6 +155,7 @@ export class AuthService {
         intentos_fallidos: 0,
         bloqueado_hasta: null,
         ultimo_acceso_en: loginAt,
+        ultima_actividad_en: loginAt,
         updated_by: row.id_usuario,
       });
       const access = await this.accesses.record(
@@ -157,6 +175,20 @@ export class AuthService {
         accessId: access?.id_acceso,
       };
     });
+    if (!payload && lockExpiresAt > Date.now()) {
+      if (automaticLock) {
+        const remainingMinutes = Math.max(
+          1,
+          Math.ceil((lockExpiresAt - Date.now()) / 60000),
+        );
+        throw new UnauthorizedException(
+          `Demasiados intentos fallidos. Vuelve a intentarlo en ${remainingMinutes} ${remainingMinutes === 1 ? 'minuto' : 'minutos'}.`,
+        );
+      }
+      throw new UnauthorizedException(
+        'Cuenta bloqueada temporalmente. Contacta al administrador.',
+      );
+    }
     if (!payload)
       throw new UnauthorizedException(
         'Credenciales invalidas o cuenta no disponible',
@@ -200,11 +232,25 @@ export class AuthService {
     return {
       access_token: await this.jwt.signAsync(user),
       token_type: 'Bearer',
+      expires_in: jwtConfig().signOptions.expiresIn,
     };
   }
   async logout(user: JwtPayload) {
     await this.accesses.closeSession(user.sub, user.accessId);
     return { message: 'Sesion cerrada.' };
+  }
+  async recordActivity(userId: number) {
+    await this.db.query(
+      `UPDATE usuarios
+       SET ultima_actividad_en = CURRENT_TIMESTAMP
+       WHERE id_usuario = $1
+         AND (
+           ultima_actividad_en IS NULL
+           OR ultima_actividad_en < CURRENT_TIMESTAMP - INTERVAL '30 seconds'
+         )`,
+      [userId],
+    );
+    return { en_linea: true };
   }
   async forgotPassword(email: string) {
     const normalizedEmail = email.toLowerCase();
@@ -287,10 +333,15 @@ export class AuthService {
     return { message: 'Contrasena restablecida. Ya puedes iniciar sesion.' };
   }
   async profile(id: number) {
-    return this.db.getRepository(Usuario).findOneOrFail({
+    const user = await this.db.getRepository(Usuario).findOneOrFail({
       where: { id_usuario: id },
       relations: { persona: true, rol: true },
     });
+    const permissions = await this.permissions.forUser(
+      user.id_usuario,
+      user.id_rol,
+    );
+    return Object.assign(user, { permisos: [...permissions].sort() });
   }
   async changePassword(
     id: number,

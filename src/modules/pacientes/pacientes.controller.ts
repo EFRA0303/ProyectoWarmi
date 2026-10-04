@@ -13,7 +13,9 @@ import { ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { PacientesService } from './pacientes.service.js';
 import { CreatePacienteDto } from './dto/create-paciente.dto.js';
 import { UpdatePacienteDto } from './dto/update-paciente.dto.js';
-import { PaginationDto } from '../../common/dto/pagination.dto.js';
+import { PacienteQueryDto } from './dto/paciente-query.dto.js';
+import { RegistroCompletoPacienteDto } from './dto/registro-completo-paciente.dto.js';
+import { ActualizacionCompletaPacienteDto } from './dto/actualizacion-completa-paciente.dto.js';
 import { CurrentUser } from '../../common/decorators/current-user.decorator.js';
 import { Permissions } from '../../common/decorators/permissions.decorator.js';
 import type { JwtPayload } from '../../common/interfaces/jwt-payload.interface.js';
@@ -35,11 +37,42 @@ export class PacientesController {
   create(@Body() dto: CreatePacienteDto, @CurrentUser() user: JwtPayload) {
     return this.service.create(dto, user.sub);
   }
+  @Post('registro-completo')
+  @Permissions('personas.crear', 'pacientes.crear')
+  @ApiOperation({
+    summary: 'Registrar una persona y su paciente',
+    description:
+      'Crea ambos registros en una sola transacción, sin generar una cuenta de usuario.',
+  })
+  registerComplete(
+    @Body() dto: RegistroCompletoPacienteDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.service.registerComplete(dto, user.sub);
+  }
+  @Patch(':id/actualizacion-completa')
+  @Permissions('personas.actualizar', 'pacientes.actualizar')
+  @ApiOperation({
+    summary: 'Actualizar la persona y su paciente',
+    description:
+      'Actualiza los datos personales y del paciente en una sola transacción.',
+  })
+  updateComplete(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: ActualizacionCompletaPacienteDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.service.updateComplete(id, dto, user.sub);
+  }
   @Get()
   @Permissions('pacientes.leer')
-  @ApiOperation({ summary: 'Listar pacientes' })
-  findAll(@Query() query: PaginationDto) {
-    return this.service.findAll(query);
+  @ApiOperation({
+    summary: 'Listar pacientes',
+    description:
+      'Devuelve pacientes paginados con su persona y permite buscar por datos personales y filtrar por estado.',
+  })
+  findAll(@Query() query: PacienteQueryDto) {
+    return this.service.findAllWithPerson(query);
   }
   @Get(':id')
   @Permissions('pacientes.leer')

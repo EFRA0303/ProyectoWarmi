@@ -67,6 +67,9 @@ export class Usuario {
   ultimo_acceso_en: Date | null;
 
   @Column({ type: 'timestamptz', nullable: true })
+  ultima_actividad_en: Date | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
   cambio_contrasena_en: Date | null;
 
   // Recuperación de contraseña

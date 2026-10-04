@@ -7,17 +7,28 @@ import {
   IsEnum,
 } from 'class-validator';
 import { Genero } from '../../../common/enums/genero.enum.js';
+import { Transform } from 'class-transformer';
+import { normalizePersonName } from '../../../common/utils/person-name.js';
 export class CreatePersonaDto {
+  @Transform(({ value }) =>
+    typeof value === 'string' ? normalizePersonName(value) : value,
+  )
   @IsNotEmpty()
   @IsString()
   @MaxLength(100)
   nombre: string;
 
+  @Transform(({ value }) =>
+    typeof value === 'string' ? normalizePersonName(value) : value,
+  )
   @IsNotEmpty()
   @IsString()
   @MaxLength(100)
   ap_paterno: string;
 
+  @Transform(({ value }) =>
+    typeof value === 'string' ? normalizePersonName(value) : value,
+  )
   @IsOptional()
   @IsString()
   @MaxLength(100)

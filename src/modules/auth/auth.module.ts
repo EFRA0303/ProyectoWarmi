@@ -11,6 +11,7 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard.js';
 import { PermissionsGuard } from './guards/permissions.guard.js';
 import { MailService } from './mail.service.js';
 import { AccesosUsuarioModule } from '../accesos-usuario/accesos-usuario.module.js';
+import { EffectivePermissionsService } from './effective-permissions.service.js';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { AccesosUsuarioModule } from '../accesos-usuario/accesos-usuario.module.
     LocalStrategy,
     JwtStrategy,
     MailService,
+    EffectivePermissionsService,
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: PermissionsGuard },
   ],

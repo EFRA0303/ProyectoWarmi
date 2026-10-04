@@ -43,6 +43,7 @@ export class AuthController {
       example: {
         access_token: 'eyJhbGciOiJIUzI1NiIs...',
         token_type: 'Bearer',
+        expires_in: 3600,
       },
     },
   })
@@ -58,6 +59,17 @@ export class AuthController {
   @HttpCode(200)
   logout(@CurrentUser() user: JwtPayload) {
     return this.service.logout(user);
+  }
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Registrar actividad de la sesion actual',
+    description:
+      'Actualiza la presencia del usuario. Se considera en linea durante los dos minutos posteriores a su ultima actividad.',
+  })
+  @Post('activity')
+  @HttpCode(200)
+  activity(@CurrentUser() user: JwtPayload) {
+    return this.service.recordActivity(user.sub);
   }
   @Public()
   @Post('forgot-password')

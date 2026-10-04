@@ -17,6 +17,7 @@ import { PaginationDto } from '../../common/dto/pagination.dto.js';
 import { CurrentUser } from '../../common/decorators/current-user.decorator.js';
 import { Permissions } from '../../common/decorators/permissions.decorator.js';
 import type { JwtPayload } from '../../common/interfaces/jwt-payload.interface.js';
+import { DisponibilidadPersonaDto } from './dto/disponibilidad-persona.dto.js';
 
 @ApiBearerAuth('access-token')
 @Controller('personas')
@@ -36,6 +37,12 @@ export class PersonasController {
   @ApiOperation({ summary: 'Listar personas' })
   findAll(@Query() query: PaginationDto) {
     return this.service.findAll(query);
+  }
+  @Get('disponibilidad')
+  @Permissions('personas.crear')
+  @ApiOperation({ summary: 'Verificar disponibilidad de CI y teléfono principal' })
+  availability(@Query() query: DisponibilidadPersonaDto) {
+    return this.service.availability(query.ci, query.telefono1);
   }
   @Get(':id')
   @Permissions('personas.leer')
