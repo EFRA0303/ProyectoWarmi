@@ -16,6 +16,7 @@ import { CatalogoServicios1790500000000 } from '../dist/database/migrations/1790
 import { DomainModulesFiveToEleven1790600000000 } from '../dist/database/migrations/1790600000000-DomainModulesFiveToEleven.js';
 import { BusinessIntegrity1790700000000 } from '../dist/database/migrations/1790700000000-BusinessIntegrity.js';
 import { UserPresence1790800000000 } from '../dist/database/migrations/1790800000000-UserPresence.js';
+import { UserStatusReason1790900000000 } from '../dist/database/migrations/1790900000000-UserStatusReason.js';
 import { hashPassword } from '../dist/common/utils/password.js';
 import { Usuario } from '../dist/modules/usuarios/entities/usuario.entity.js';
 import { MailService } from '../dist/modules/auth/mail.service.js';
@@ -58,6 +59,7 @@ describe('Postman con PostgreSQL temporal, sin datos en la base de trabajo', () 
         DomainModulesFiveToEleven1790600000000,
         BusinessIntegrity1790700000000,
         UserPresence1790800000000,
+        UserStatusReason1790900000000,
       ],
     });
     await db.initialize();
@@ -418,6 +420,30 @@ describe('Postman con PostgreSQL temporal, sin datos en la base de trabajo', () 
         }),
       }),
     );
+    const patientAndAccessDown = await api()
+      .patch('/pacientes/' + patientId + '/estado-acceso')
+      .set('Authorization', auth())
+      .send({ estado: 'BAJA', motivo_baja: 'Baja coordinada de prueba' })
+      .expect(200);
+    expect(patientAndAccessDown.body.usuario_actualizado).toBe(true);
+    expect(patientAndAccessDown.body.paciente.estado).toBe('BAJA');
+    let [coordinatedUser] = await db.query(
+      'SELECT estado, motivo_estado FROM usuarios WHERE id_usuario = $1',
+      [userId],
+    );
+    expect(coordinatedUser.estado).toBe('BAJA');
+    expect(coordinatedUser.motivo_estado).toBe('Baja coordinada de prueba');
+    await api()
+      .patch('/pacientes/' + patientId + '/estado-acceso')
+      .set('Authorization', auth())
+      .send({ estado: 'ACTIVO' })
+      .expect(200);
+    [coordinatedUser] = await db.query(
+      'SELECT estado, motivo_estado FROM usuarios WHERE id_usuario = $1',
+      [userId],
+    );
+    expect(coordinatedUser.estado).toBe('ACTIVO');
+    expect(coordinatedUser.motivo_estado).toBeNull();
     for (const estado of ['BAJA', 'BLOQUEADO']) {
       const filtered = await api()
         .get('/usuarios?estado=' + estado)
@@ -444,6 +470,18 @@ describe('Postman con PostgreSQL temporal, sin datos en la base de trabajo', () 
       .post('/auth/activity')
       .set('Authorization', 'Bearer ' + limitedToken)
       .expect(200, { en_linea: true });
+    const ownProfile = await api()
+      .patch('/auth/me/personal')
+      .set('Authorization', 'Bearer ' + limitedToken)
+      .send({ direccion: 'Perfil propio actualizado' })
+      .expect(200);
+    expect(ownProfile.body).toEqual(
+      expect.objectContaining({
+        id_persona: personId,
+        direccion: 'Perfil propio actualizado',
+        updated_by: userId,
+      }),
+    );
     const onlineUser = await api()
       .get('/usuarios?search=user@test.local')
       .set('Authorization', auth())
@@ -672,17 +710,29 @@ describe('Postman con PostgreSQL temporal, sin datos en la base de trabajo', () 
       }),
     );
     const down = await api()
-      .patch('/personal/' + employee.body.id_personal + '/baja')
+      .patch('/personal/' + employee.body.id_personal + '/estado')
       .set('Authorization', auth())
-      .send({})
+      .send({ estado: 'BAJA', motivo_baja: 'Fin de relación laboral' })
       .expect(200);
     expect(down.body.estado).toBe('BAJA');
     expect(down.body.updated_by).toBe(1);
+    let [staffUser] = await db.query(
+      'SELECT estado, motivo_estado FROM usuarios WHERE id_usuario = $1',
+      [userId],
+    );
+    expect(staffUser.estado).toBe('BAJA');
+    expect(staffUser.motivo_estado).toBe('Fin de relación laboral');
     await api()
-      .patch('/personal/' + staffId)
+      .patch('/personal/' + staffId + '/estado')
       .set('Authorization', auth())
       .send({ estado: 'ACTIVO' })
       .expect(200);
+    [staffUser] = await db.query(
+      'SELECT estado, motivo_estado FROM usuarios WHERE id_usuario = $1',
+      [userId],
+    );
+    expect(staffUser.estado).toBe('ACTIVO');
+    expect(staffUser.motivo_estado).toBeNull();
   });
 
   it('registra un paciente completo de forma atomica y permite consultarlo', async () => {
@@ -1445,8 +1495,7 @@ describe('Postman con PostgreSQL temporal, sin datos en la base de trabajo', () 
         .get('/' + resource)
         .set('Authorization', auth())
         .expect(200);
-      if (resource === 'auditoria') expect(history.body.total).toBe(0);
-      else expect(history.body.total).toBeGreaterThan(0);
+      expect(history.body.total).toBeGreaterThan(0);
       await api()
         .post('/' + resource)
         .set('Authorization', auth())
@@ -1542,7 +1591,7 @@ describe('Postman con PostgreSQL temporal, sin datos en la base de trabajo', () 
     await api()
       .patch('/usuarios/' + userId + '/baja')
       .set('Authorization', auth())
-      .send({})
+      .send({ motivo_baja: 'Baja directa de prueba' })
       .expect(200);
     await api()
       .get('/auth/me')
@@ -1553,6 +1602,7 @@ describe('Postman con PostgreSQL temporal, sin datos en la base de trabajo', () 
       .set('Authorization', auth())
       .expect(200);
     expect(user.body.estado).toBe('BAJA');
+    expect(user.body.motivo_estado).toBe('Baja directa de prueba');
   });
 
   it('solo expone DELETE para limpiar accesos y no implementa deleted_at o triggers', async () => {

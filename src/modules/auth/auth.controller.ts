@@ -4,6 +4,7 @@ import {
   Get,
   HttpCode,
   Inject,
+  Patch,
   Post,
   Req,
   UseGuards,
@@ -19,6 +20,7 @@ import { Public } from '../../common/decorators/public.decorator.js';
 import { CurrentUser } from '../../common/decorators/current-user.decorator.js';
 import type { JwtPayload } from '../../common/interfaces/jwt-payload.interface.js';
 import { requestMetadata } from '../../common/interfaces/request-metadata.interface.js';
+import { UpdatePersonaDto } from '../personas/dto/update-persona.dto.js';
 import {
   ApiBadRequestResponse,
   ApiBearerAuth,
@@ -120,6 +122,19 @@ export class AuthController {
   @Get('me')
   profile(@CurrentUser() user: JwtPayload) {
     return this.service.profile(user.sub);
+  }
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Actualizar los datos personales de la sesion actual',
+    description:
+      'Solo permite modificar la persona vinculada al usuario autenticado.',
+  })
+  @Patch('me/personal')
+  updateOwnProfile(
+    @Body() dto: UpdatePersonaDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.service.updateOwnProfile(user.sub, dto);
   }
   @ApiBearerAuth('access-token')
   @ApiOperation({ summary: 'Cambiar la contrasena de la sesion actual' })

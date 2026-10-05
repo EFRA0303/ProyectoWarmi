@@ -12,12 +12,14 @@ import { PermissionsGuard } from './guards/permissions.guard.js';
 import { MailService } from './mail.service.js';
 import { AccesosUsuarioModule } from '../accesos-usuario/accesos-usuario.module.js';
 import { EffectivePermissionsService } from './effective-permissions.service.js';
+import { PersonasModule } from '../personas/personas.module.js';
 
 @Module({
   imports: [
     PassportModule,
     JwtModule.registerAsync({ useFactory: jwtConfig }),
     AccesosUsuarioModule,
+    PersonasModule,
   ],
   controllers: [AuthController],
   providers: [

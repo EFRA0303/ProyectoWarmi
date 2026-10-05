@@ -14,7 +14,7 @@ function integerInRange(
 export function mailConfig() {
   const resetUrl =
     process.env.FRONTEND_RESET_PASSWORD_URL ??
-    'http://localhost:5173/restablecer-contrasena';
+    'http://localhost:3001/restablecer-contrasena';
   new URL(resetUrl);
 
   return {

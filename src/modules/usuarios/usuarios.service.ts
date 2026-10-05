@@ -254,6 +254,7 @@ export class UsuariosService extends CrudService<Usuario> {
         await repo.update(id, {
           estado: EstadoUsuario.ACTIVO,
           bloqueado_hasta: blockedUntil,
+          motivo_estado: reason,
           updated_by: actor,
         });
         action = AuditEvent.USUARIO_BLOQUEADO;
@@ -264,6 +265,7 @@ export class UsuariosService extends CrudService<Usuario> {
         await repo.update(id, {
           estado: EstadoUsuario.BAJA,
           bloqueado_hasta: null,
+          motivo_estado: reason,
           updated_by: actor,
         });
         description = `Estado ${row.estado} → BAJA. Motivo: ${reason}`;
@@ -271,6 +273,7 @@ export class UsuariosService extends CrudService<Usuario> {
         await repo.update(id, {
           estado: EstadoUsuario.ACTIVO,
           bloqueado_hasta: null,
+          motivo_estado: null,
           intentos_fallidos: 0,
           updated_by: actor,
         });
@@ -301,12 +304,11 @@ export class UsuariosService extends CrudService<Usuario> {
     metadata: RequestMetadata,
     reason?: string,
   ) {
-    return this.updateWithAudit(
+    return this.changeAccessStateWithAudit(
       id,
-      { estado: EstadoUsuario.BAJA },
+      { estado: EstadoUsuario.BAJA, motivo: reason },
       actor,
       metadata,
-      reason,
     );
   }
 }

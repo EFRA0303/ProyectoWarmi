@@ -15,6 +15,11 @@ import { hashPassword } from '../../common/utils/password.js';
 import type { RegistroCompletoPersonalDto } from './dto/registro-completo-personal.dto.js';
 import type { PersonalQueryDto } from './dto/personal-query.dto.js';
 import type { ActualizacionCompletaPersonalDto } from './dto/actualizacion-completa-personal.dto.js';
+import type { CambiarEstadoRegistroDto } from '../../common/dto/cambiar-estado-registro.dto.js';
+import type { RequestMetadata } from '../../common/interfaces/request-metadata.interface.js';
+import { EstadoUsuario } from '../../common/enums/estado-usuario.enum.js';
+import { Auditoria } from '../auditoria/entities/auditoria.entity.js';
+import { AuditEvent } from '../../common/enums/audit-event.enum.js';
 
 @Injectable()
 export class PersonalService extends CrudService<Personal> {
@@ -142,5 +147,73 @@ export class PersonalService extends CrudService<Personal> {
       .take(limit);
     const [data, total] = await query.getManyAndCount();
     return { data, total, page, limit };
+  }
+
+  async changeStatus(
+    id: number,
+    dto: CambiarEstadoRegistroDto,
+    actor: number,
+    metadata: RequestMetadata,
+  ) {
+    return this.db.transaction(async (manager) => {
+      const staffRepository = manager.getRepository(Personal);
+      const userRepository = manager.getRepository(Usuario);
+      const staff = await staffRepository.findOne({
+        where: { id_personal: id },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!staff) throw new NotFoundException('Registro no encontrado');
+
+      const reason = dto.motivo_baja?.trim();
+      if (dto.estado === EstadoGeneral.BAJA && !reason)
+        throw new BadRequestException('El motivo de la baja es obligatorio');
+
+      const user = await userRepository.findOne({
+        where: { id_usuario: staff.id_usuario },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!user)
+        throw new NotFoundException('La cuenta del empleado no existe');
+      if (user.id_usuario === actor && dto.estado === EstadoGeneral.BAJA)
+        throw new BadRequestException('No puedes dar de baja tu propia cuenta');
+
+      staff.estado = dto.estado;
+      staff.motivo_baja = dto.estado === EstadoGeneral.BAJA ? reason! : null;
+      staff.updated_by = actor;
+      await staffRepository.save(staff);
+
+      user.estado =
+        dto.estado === EstadoGeneral.ACTIVO
+          ? EstadoUsuario.ACTIVO
+          : EstadoUsuario.BAJA;
+      user.bloqueado_hasta = null;
+      user.motivo_estado = dto.estado === EstadoGeneral.BAJA ? reason! : null;
+      if (dto.estado === EstadoGeneral.ACTIVO) user.intentos_fallidos = 0;
+      user.updated_by = actor;
+      await userRepository.save(user);
+
+      const auditRepository = manager.getRepository(Auditoria);
+      await auditRepository.save(
+        auditRepository.create({
+          id_usuario_accion: actor,
+          id_usuario_afectado: user.id_usuario,
+          accion: AuditEvent.USUARIO_ACTUALIZADO,
+          entidad: 'usuarios',
+          id_registro: String(user.id_usuario),
+          descripcion:
+            `${dto.estado === EstadoGeneral.ACTIVO ? 'Cuenta reactivada' : 'Cuenta dada de baja'} junto con el personal ${id}${reason ? `. Motivo: ${reason}` : ''}`.slice(
+              0,
+              500,
+            ),
+          ip: metadata.ip,
+          user_agent: metadata.userAgent,
+        }),
+      );
+
+      return staffRepository.findOneOrFail({
+        where: { id_personal: id },
+        relations: { usuario: { persona: true, rol: true } },
+      });
+    });
   }
 }

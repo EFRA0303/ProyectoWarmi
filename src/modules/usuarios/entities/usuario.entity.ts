@@ -63,6 +63,9 @@ export class Usuario {
   @Column({ type: 'timestamptz', nullable: true })
   bloqueado_hasta: Date | null;
 
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  motivo_estado: string | null;
+
   @Column({ type: 'timestamptz', nullable: true })
   ultimo_acceso_en: Date | null;
 

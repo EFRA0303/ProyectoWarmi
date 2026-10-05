@@ -8,7 +8,9 @@ import {
   Patch,
   Post,
   Query,
+  Req,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import { ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { PersonalService } from './personal.service.js';
 import { CreatePersonalDto } from './dto/create-personal.dto.js';
@@ -20,6 +22,8 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator.js';
 import { Permissions } from '../../common/decorators/permissions.decorator.js';
 import type { JwtPayload } from '../../common/interfaces/jwt-payload.interface.js';
 import { BajaDto } from '../../common/dto/baja.dto.js';
+import { CambiarEstadoRegistroDto } from '../../common/dto/cambiar-estado-registro.dto.js';
+import { requestMetadata } from '../../common/interfaces/request-metadata.interface.js';
 
 @ApiBearerAuth('access-token')
 @Controller('personal')
@@ -98,6 +102,26 @@ export class PersonalController {
     @CurrentUser() user: JwtPayload,
   ) {
     return this.service.update(id, dto, user.sub);
+  }
+  @Patch(':id/estado')
+  @Permissions('personal.actualizar', 'usuarios.actualizar')
+  @ApiOperation({
+    summary: 'Cambiar el estado laboral y de acceso de un empleado',
+    description:
+      'Actualiza de forma atómica el estado del personal y su cuenta de usuario vinculada.',
+  })
+  changeStatus(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: CambiarEstadoRegistroDto,
+    @CurrentUser() user: JwtPayload,
+    @Req() request: Request,
+  ) {
+    return this.service.changeStatus(
+      id,
+      dto,
+      user.sub,
+      requestMetadata(request),
+    );
   }
   @Patch(':id/baja')
   @Permissions('personal.actualizar')

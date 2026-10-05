@@ -8,7 +8,9 @@ import {
   Patch,
   Post,
   Query,
+  Req,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import { ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { PacientesService } from './pacientes.service.js';
 import { CreatePacienteDto } from './dto/create-paciente.dto.js';
@@ -20,6 +22,8 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator.js';
 import { Permissions } from '../../common/decorators/permissions.decorator.js';
 import type { JwtPayload } from '../../common/interfaces/jwt-payload.interface.js';
 import { BajaDto } from '../../common/dto/baja.dto.js';
+import { CambiarEstadoRegistroDto } from '../../common/dto/cambiar-estado-registro.dto.js';
+import { requestMetadata } from '../../common/interfaces/request-metadata.interface.js';
 
 @ApiBearerAuth('access-token')
 @Controller('pacientes')
@@ -89,6 +93,47 @@ export class PacientesController {
     @CurrentUser() user: JwtPayload,
   ) {
     return this.service.update(id, dto, user.sub);
+  }
+  @Patch(':id/estado')
+  @Permissions('pacientes.actualizar')
+  @ApiOperation({
+    summary: 'Cambiar el estado de un paciente',
+    description: 'Actualiza únicamente el registro clínico del paciente.',
+  })
+  changeStatus(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: CambiarEstadoRegistroDto,
+    @CurrentUser() user: JwtPayload,
+    @Req() request: Request,
+  ) {
+    return this.service.changeStatus(
+      id,
+      dto,
+      user.sub,
+      requestMetadata(request),
+      false,
+    );
+  }
+  @Patch(':id/estado-acceso')
+  @Permissions('pacientes.actualizar', 'usuarios.actualizar')
+  @ApiOperation({
+    summary: 'Cambiar el estado del paciente y su acceso',
+    description:
+      'Actualiza de forma atómica el registro del paciente y su cuenta vinculada, cuando existe.',
+  })
+  changeStatusAndAccess(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: CambiarEstadoRegistroDto,
+    @CurrentUser() user: JwtPayload,
+    @Req() request: Request,
+  ) {
+    return this.service.changeStatus(
+      id,
+      dto,
+      user.sub,
+      requestMetadata(request),
+      true,
+    );
   }
   @Patch(':id/baja')
   @Permissions('pacientes.actualizar')

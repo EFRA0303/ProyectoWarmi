@@ -21,6 +21,8 @@ import type { RequestMetadata } from '../../common/interfaces/request-metadata.i
 import { Auditoria } from '../auditoria/entities/auditoria.entity.js';
 import { EffectivePermissionsService } from './effective-permissions.service.js';
 import { jwtConfig } from '../../config/jwt.config.js';
+import { PersonasService } from '../personas/personas.service.js';
+import type { UpdatePersonaDto } from '../personas/dto/update-persona.dto.js';
 
 @Injectable()
 export class AuthService {
@@ -34,6 +36,8 @@ export class AuthService {
     private readonly accesses: AccesosUsuarioService,
     @Inject(EffectivePermissionsService)
     private readonly permissions: EffectivePermissionsService,
+    @Inject(PersonasService)
+    private readonly personas: PersonasService,
   ) {}
   async validateCredentials(
     rawIdentifier: string,
@@ -342,6 +346,12 @@ export class AuthService {
       user.id_rol,
     );
     return Object.assign(user, { permisos: [...permissions].sort() });
+  }
+  async updateOwnProfile(id: number, data: UpdatePersonaDto) {
+    const user = await this.db.getRepository(Usuario).findOneByOrFail({
+      id_usuario: id,
+    });
+    return this.personas.update(user.id_persona, data, id);
   }
   async changePassword(
     id: number,
