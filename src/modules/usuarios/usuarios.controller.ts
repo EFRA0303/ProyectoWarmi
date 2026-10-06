@@ -31,6 +31,15 @@ export class UsuariosController {
     @Inject(UsuariosService) private readonly service: UsuariosService,
   ) {}
 
+  @Post('paciente')
+  @Permissions('usuarios.crear', 'roles.asignar', 'pacientes.leer')
+  @ApiOperation({ summary: 'Crear una cuenta de acceso para un paciente' })
+  createPatientAccount(
+    @Body() dto: CreateUsuarioDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.service.registerPatientAccount(dto, user.sub);
+  }
   @Post()
   @Permissions('usuarios.crear', 'roles.asignar')
   @ApiOperation({ summary: 'Crear un usuario y asignarle un rol' })
@@ -46,6 +55,16 @@ export class UsuariosController {
   })
   findAll(@Query() query: UsuarioQueryDto) {
     return this.service.findAllWithDetails(query);
+  }
+  @Get('presencia')
+  @Permissions('usuarios.leer')
+  @ApiOperation({
+    summary: 'Consultar la presencia de usuarios',
+    description:
+      'Devuelve únicamente el estado en línea y la última actividad de los usuarios solicitados.',
+  })
+  presence(@Query('ids') ids?: string) {
+    return this.service.findPresence(ids);
   }
   @Get('disponibilidad')
   @Permissions('usuarios.crear')

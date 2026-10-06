@@ -134,6 +134,7 @@ export class PersonalService extends CrudService<Personal> {
           OR CONCAT_WS(' ', persona.nombre, persona.ap_paterno, persona.ap_materno) ILIKE :search
           OR persona.ci ILIKE :search
           OR usuario.correo_acceso ILIKE :search
+          OR usuario.nombre_usuario ILIKE :search
           OR personal.profesion ILIKE :search
           OR personal.cargo ILIKE :search
         )`,

@@ -204,11 +204,23 @@ describe('Postman con PostgreSQL temporal, sin datos en la base de trabajo', () 
 
     await api().post('/auth/logout').set('Authorization', auth()).expect(200);
     await api().get('/auth/me').set('Authorization', auth()).expect(401);
+    const [loggedOutUser] = await db.query(
+      'SELECT ultima_actividad_en FROM usuarios WHERE id_usuario = $1',
+      [1],
+    );
+    expect(loggedOutUser.ultima_actividad_en).toBeNull();
     const login = await api()
       .post('/auth/login')
       .send({ correo_acceso: 'admin@test.local', contrasena: password })
       .expect(200);
     token = login.body.access_token;
+    const loggedOutPresence = await api()
+      .get('/usuarios/presencia?ids=1')
+      .set('Authorization', auth())
+      .expect(200);
+    expect(loggedOutPresence.body[0].ultima_desconexion_en).toEqual(
+      expect.any(String),
+    );
   });
 
   it('crea personas con autor real y rechaza campos de autor enviados por el cliente', async () => {
@@ -349,7 +361,7 @@ describe('Postman con PostgreSQL temporal, sin datos en la base de trabajo', () 
       .expect(201);
     roleId = role.body.id_rol;
     const user = await api()
-      .post('/usuarios')
+      .post('/usuarios/paciente')
       .set('Authorization', auth())
       .send({
         id_persona: personId,
@@ -420,6 +432,13 @@ describe('Postman con PostgreSQL temporal, sin datos en la base de trabajo', () 
         }),
       }),
     );
+    for (const search of ['usuario.prueba', 'user@test.local']) {
+      const matchingPatient = await api()
+        .get('/pacientes?search=' + encodeURIComponent(search))
+        .set('Authorization', auth())
+        .expect(200);
+      expect(matchingPatient.body.data[0].id_paciente).toBe(patientId);
+    }
     const patientAndAccessDown = await api()
       .patch('/pacientes/' + patientId + '/estado-acceso')
       .set('Authorization', auth())
@@ -493,6 +512,18 @@ describe('Postman con PostgreSQL temporal, sin datos en la base de trabajo', () 
         ultima_actividad_en: expect.any(String),
       }),
     );
+    const presence = await api()
+      .get('/usuarios/presencia?ids=' + userId)
+      .set('Authorization', auth())
+      .expect(200);
+    expect(presence.body).toEqual([
+      expect.objectContaining({
+        id_usuario: userId,
+        en_linea: true,
+        ultima_actividad_en: expect.any(String),
+        ultima_desconexion_en: null,
+      }),
+    ]);
     await api()
       .get('/personas')
       .set('Authorization', 'Bearer ' + limitedToken)
@@ -984,6 +1015,13 @@ describe('Postman con PostgreSQL temporal, sin datos en la base de trabajo', () 
           rol: expect.objectContaining({ id_rol: roleId }),
         }),
       }),
+    );
+    const searchedByUsername = await api()
+      .get('/personal?search=empleada.comp&estado=ACTIVO')
+      .set('Authorization', auth())
+      .expect(200);
+    expect(searchedByUsername.body.data[0].id_personal).toBe(
+      created.body.id_personal,
     );
     expect(JSON.stringify(searched.body)).not.toContain('contrasena_hash');
     await api()

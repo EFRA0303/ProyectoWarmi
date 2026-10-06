@@ -100,6 +100,8 @@ export class PacientesService extends CrudService<Paciente> {
           OR persona.ci ILIKE :search
           OR persona.telefono1 ILIKE :search
           OR persona.telefono2 ILIKE :search
+          OR usuario.correo_acceso ILIKE :search
+          OR usuario.nombre_usuario ILIKE :search
         )`,
         { search: `%${normalizedSearch}%` },
       );

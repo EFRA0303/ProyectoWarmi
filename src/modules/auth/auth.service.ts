@@ -241,6 +241,9 @@ export class AuthService {
   }
   async logout(user: JwtPayload) {
     await this.accesses.closeSession(user.sub, user.accessId);
+    await this.db.getRepository(Usuario).update(user.sub, {
+      ultima_actividad_en: null,
+    });
     return { message: 'Sesion cerrada.' };
   }
   async recordActivity(userId: number) {

@@ -2,6 +2,7 @@ import {
   Injectable,
   Inject,
   BadRequestException,
+  ConflictException,
   NotFoundException,
 } from '@nestjs/common';
 import { DataSource } from 'typeorm';
@@ -19,6 +20,7 @@ import { Auditoria } from '../auditoria/entities/auditoria.entity.js';
 import { AuditEvent } from '../../common/enums/audit-event.enum.js';
 import { EstadoUsuario } from '../../common/enums/estado-usuario.enum.js';
 import type { CambiarEstadoUsuarioDto } from './dto/cambiar-estado-usuario.dto.js';
+import { Paciente } from '../pacientes/entities/paciente.entity.js';
 
 @Injectable()
 export class UsuariosService extends CrudService<Usuario> {
@@ -103,6 +105,52 @@ export class UsuariosService extends CrudService<Usuario> {
     };
   }
 
+  async findPresence(ids?: string) {
+    const userIds = ids
+      ? ids.split(',').map((value) => Number(value.trim()))
+      : [];
+
+    if (
+      userIds.length > 100 ||
+      userIds.some((id) => !Number.isInteger(id) || id <= 0)
+    ) {
+      throw new BadRequestException('Los usuarios solicitados no son válidos');
+    }
+
+    const query = this.repository
+      .createQueryBuilder('usuario')
+      .select(['usuario.id_usuario', 'usuario.ultima_actividad_en'])
+      .orderBy('usuario.id_usuario', 'ASC');
+
+    if (userIds.length) {
+      query.where('usuario.id_usuario IN (:...userIds)', { userIds });
+    }
+
+    query.addSelect(
+      (subQuery) =>
+        subQuery
+          .select('MAX(acceso.fecha_logout)')
+          .from('accesos_usuario', 'acceso')
+          .where('acceso.id_usuario = usuario.id_usuario')
+          .andWhere('acceso.login_exitoso = true'),
+      'ultima_desconexion_en',
+    );
+
+    const { entities: users, raw } = await query.getRawAndEntities();
+    const onlineCutoff = Date.now() - 2 * 60_000;
+
+    return users.map((user, index) => ({
+      id_usuario: user.id_usuario,
+      ultima_actividad_en: user.ultima_actividad_en,
+      ultima_desconexion_en:
+        (raw[index]?.ultima_desconexion_en as string | null) ?? null,
+      en_linea: Boolean(
+        user.ultima_actividad_en &&
+        user.ultima_actividad_en.getTime() >= onlineCutoff,
+      ),
+    }));
+  }
+
   async findOneWithDetails(id: number) {
     const usuario = await this.repository
       .createQueryBuilder('usuario')
@@ -158,6 +206,23 @@ export class UsuariosService extends CrudService<Usuario> {
       },
       actor,
     );
+  }
+
+  async registerPatientAccount(dto: CreateUsuarioDto, actor: number) {
+    const patient = await this.repository.manager
+      .getRepository(Paciente)
+      .findOne({
+        where: { id_persona: dto.id_persona, estado: EstadoGeneral.ACTIVO },
+      });
+    if (!patient)
+      throw new BadRequestException(
+        'La persona seleccionada no corresponde a un paciente activo',
+      );
+
+    if (await this.repository.existsBy({ id_persona: dto.id_persona }))
+      throw new ConflictException('El paciente seleccionado ya tiene un usuario');
+
+    return this.register(dto, actor);
   }
 
   async updateWithAudit(
