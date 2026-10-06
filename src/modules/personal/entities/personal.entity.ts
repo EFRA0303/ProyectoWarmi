@@ -40,6 +40,9 @@ export class Personal {
   @Column({ type: 'date' })
   fecha_ingreso: string;
 
+  @Column({ type: 'char', length: 7, default: '#2DD4BF' })
+  color_agenda: string;
+
   @Column({
     type: 'enum',
     enum: EstadoGeneral,

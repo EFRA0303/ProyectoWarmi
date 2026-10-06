@@ -57,6 +57,9 @@ pids
 *.pid
 *.seed
 *.pid.lock
+/uploads/*
+!/uploads/perfil/
+!/uploads/perfil/.gitkeep
 
 # Diagnostic reports (https://nodejs.org/api/report.html)
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json

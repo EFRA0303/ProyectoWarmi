@@ -7,8 +7,11 @@ import {
   Patch,
   Post,
   Req,
+  UploadedFile,
+  UseInterceptors,
   UseGuards,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import type { Request } from 'express';
 import { AuthGuard } from '@nestjs/passport';
 import { AuthService } from './auth.service.js';
@@ -135,6 +138,16 @@ export class AuthController {
     @CurrentUser() user: JwtPayload,
   ) {
     return this.service.updateOwnProfile(user.sub, dto);
+  }
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Actualizar la foto de perfil de la sesión actual' })
+  @Post('me/foto-perfil')
+  @UseInterceptors(FileInterceptor('foto', { limits: { fileSize: 5 * 1024 * 1024 } }))
+  updateOwnProfilePhoto(
+    @UploadedFile() file: { buffer: Buffer; size: number } | undefined,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.service.updateOwnProfilePhoto(user.sub, file);
   }
   @ApiBearerAuth('access-token')
   @ApiOperation({ summary: 'Cambiar la contrasena de la sesion actual' })

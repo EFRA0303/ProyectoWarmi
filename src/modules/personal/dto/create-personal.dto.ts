@@ -5,6 +5,8 @@ import {
   IsString,
   MaxLength,
   IsDateString,
+  IsHexColor,
+  IsOptional,
 } from 'class-validator';
 
 export class CreatePersonalDto {
@@ -24,4 +26,8 @@ export class CreatePersonalDto {
 
   @IsDateString({ strict: true })
   fecha_ingreso: string;
+
+  @IsOptional()
+  @IsHexColor()
+  color_agenda?: string;
 }

@@ -23,6 +23,11 @@ import { EffectivePermissionsService } from './effective-permissions.service.js'
 import { jwtConfig } from '../../config/jwt.config.js';
 import { PersonasService } from '../personas/personas.service.js';
 import type { UpdatePersonaDto } from '../personas/dto/update-persona.dto.js';
+import { optimizeProfilePhoto } from '../../common/utils/profile-photo.js';
+import {
+  removeProfilePhoto,
+  writeProfilePhoto,
+} from '../../common/utils/profile-photo-storage.js';
 
 @Injectable()
 export class AuthService {
@@ -355,6 +360,39 @@ export class AuthService {
       id_usuario: id,
     });
     return this.personas.update(user.id_persona, data, id);
+  }
+  async updateOwnProfilePhoto(
+    id: number,
+    file?: { buffer: Buffer; size: number },
+  ) {
+    const repository = this.db.getRepository(Usuario);
+    const user = await repository.findOne({
+      where: { id_usuario: id },
+      relations: { persona: true },
+    });
+    if (!user) throw new UnauthorizedException('Sesión no válida');
+
+    const photo = await optimizeProfilePhoto(file);
+    const previousPath = user.foto_perfil_ruta;
+    const publicPath = await writeProfilePhoto(photo.data, user.persona);
+
+    try {
+      await repository.update(id, {
+        foto_perfil_ruta: publicPath,
+        updated_by: id,
+      });
+    } catch (error) {
+      if (publicPath !== previousPath) await removeProfilePhoto(publicPath);
+      throw error;
+    }
+    if (previousPath !== publicPath) await removeProfilePhoto(previousPath);
+
+    return {
+      foto_perfil_ruta: publicPath,
+      ancho: photo.width,
+      alto: photo.height,
+      bytes: photo.size,
+    };
   }
   async changePassword(
     id: number,

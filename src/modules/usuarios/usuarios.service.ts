@@ -21,6 +21,12 @@ import { AuditEvent } from '../../common/enums/audit-event.enum.js';
 import { EstadoUsuario } from '../../common/enums/estado-usuario.enum.js';
 import type { CambiarEstadoUsuarioDto } from './dto/cambiar-estado-usuario.dto.js';
 import { Paciente } from '../pacientes/entities/paciente.entity.js';
+import { optimizeProfilePhoto } from '../../common/utils/profile-photo.js';
+import {
+  readProfilePhoto,
+  removeProfilePhoto,
+  writeProfilePhoto,
+} from '../../common/utils/profile-photo-storage.js';
 
 @Injectable()
 export class UsuariosService extends CrudService<Usuario> {
@@ -163,6 +169,54 @@ export class UsuariosService extends CrudService<Usuario> {
       .getOne();
     if (!usuario) throw new NotFoundException('Registro no encontrado');
     return usuario;
+  }
+
+  async saveProfilePhoto(
+    id: number,
+    file: { buffer: Buffer; size: number },
+    actor: number,
+  ) {
+    const user = await this.repository.findOne({
+      where: { id_usuario: id },
+      relations: { persona: true },
+    });
+    if (!user) throw new NotFoundException('Registro no encontrado');
+
+    const photo = await optimizeProfilePhoto(file);
+    const previousPath = user.foto_perfil_ruta;
+    const publicPath = await writeProfilePhoto(photo.data, user.persona);
+
+    try {
+      await this.repository.update(id, {
+        foto_perfil_ruta: publicPath,
+        updated_by: actor,
+      });
+    } catch (error) {
+      if (publicPath !== previousPath) await removeProfilePhoto(publicPath);
+      throw error;
+    }
+    if (previousPath !== publicPath) await removeProfilePhoto(previousPath);
+
+    return {
+      foto_perfil_ruta: publicPath,
+      ancho: photo.width,
+      alto: photo.height,
+      bytes: photo.size,
+    };
+  }
+
+  async getProfilePhoto(id: number) {
+    const user = await this.repository.findOneBy({ id_usuario: id });
+    if (!user?.foto_perfil_ruta)
+      throw new NotFoundException('El usuario no tiene una foto de perfil');
+    try {
+      return {
+        data: await readProfilePhoto(user.foto_perfil_ruta),
+        mime: 'image/webp' as const,
+      };
+    } catch {
+      throw new NotFoundException('No se encontró la foto de perfil');
+    }
   }
 
   async availability(correo?: string, username?: string) {

@@ -9,7 +9,11 @@ import {
   Post,
   Query,
   Req,
+  StreamableFile,
+  UploadedFile,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import type { Request } from 'express';
 import { ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { UsuariosService } from './usuarios.service.js';
@@ -73,6 +77,28 @@ export class UsuariosController {
   })
   availability(@Query() query: DisponibilidadUsuarioDto) {
     return this.service.availability(query.correo_acceso, query.nombre_usuario);
+  }
+  @Post(':id/foto-perfil')
+  @Permissions('usuarios.actualizar')
+  @UseInterceptors(FileInterceptor('foto', { limits: { fileSize: 5 * 1024 * 1024 } }))
+  @ApiOperation({ summary: 'Guardar la foto de perfil de un usuario' })
+  uploadProfilePhoto(
+    @Param('id', ParseIntPipe) id: number,
+    @UploadedFile() file: { buffer: Buffer; size: number } | undefined,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    if (!file) return this.service.saveProfilePhoto(id, { buffer: Buffer.alloc(0), size: 0 }, user.sub);
+    return this.service.saveProfilePhoto(id, file, user.sub);
+  }
+  @Get(':id/foto-perfil')
+  @ApiOperation({ summary: 'Obtener la foto de perfil de un usuario' })
+  async profilePhoto(@Param('id', ParseIntPipe) id: number) {
+    const photo = await this.service.getProfilePhoto(id);
+    return new StreamableFile(photo.data, {
+      type: photo.mime,
+      length: photo.data.length,
+      disposition: 'inline',
+    });
   }
   @Get(':id')
   @Permissions('usuarios.leer')

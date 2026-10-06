@@ -14,6 +14,7 @@ class DatosPersonalEditablesDto extends PickType(UpdatePersonalDto, [
   'profesion',
   'cargo',
   'fecha_ingreso',
+  'color_agenda',
 ] as const) {}
 
 export class ActualizacionCompletaPersonalDto {
