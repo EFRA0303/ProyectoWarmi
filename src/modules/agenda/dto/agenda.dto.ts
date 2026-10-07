@@ -16,11 +16,17 @@ import {
   SolicitanteReprogramacion,
   TipoNotificacion,
 } from '../../../common/enums/domain.enums.js';
+import { DomainQueryDto } from '../../../common/dto/domain-query.dto.js';
+
+export class AgendaQueryDto extends DomainQueryDto {
+  @IsOptional() @IsEnum(EstadoCita) declare estado?: EstadoCita;
+}
+
 export class CreateCitaDto {
   @Type(() => Number) @IsInt() @Min(1) id_paciente: number;
-  @IsOptional() @Type(() => Number) @IsInt() @Min(1) id_tratamiento?: number;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) id_tratamiento?: number | null;
   @Type(() => Number) @IsInt() @Min(1) id_personal: number;
-  @IsOptional() @Type(() => Number) @IsInt() @Min(1) numero_sesion?: number;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) numero_sesion?: number | null;
   @IsDateString() fecha_hora_inicio: string;
   @IsDateString() fecha_hora_fin: string;
   @IsOptional() @IsDateString() fecha_llegada?: string;

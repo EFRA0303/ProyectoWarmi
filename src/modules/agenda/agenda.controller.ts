@@ -18,13 +18,13 @@ import {
 } from '@nestjs/swagger';
 import { CurrentUser } from '../../common/decorators/current-user.decorator.js';
 import { Permissions } from '../../common/decorators/permissions.decorator.js';
-import { DomainQueryDto } from '../../common/dto/domain-query.dto.js';
 import type { JwtPayload } from '../../common/interfaces/jwt-payload.interface.js';
 import { paginatedSchema } from '../../common/swagger/paginated-schema.js';
 import { AgendaService } from './agenda.service.js';
 import {
   CreateCitaDto,
   CreateNotificacionCitaDto,
+  AgendaQueryDto,
   ReprogramarCitaDto,
   UpdateCitaDto,
   UpdateNotificacionCitaDto,
@@ -50,8 +50,14 @@ export class AgendaController {
   @Permissions('agenda.leer')
   @ApiOperation({ summary: 'Listar citas con filtros' })
   @ApiOkResponse({ schema: paginatedSchema(Cita) })
-  list(@Query() q: DomainQueryDto) {
+  list(@Query() q: AgendaQueryDto) {
     return this.service.list(q);
+  }
+  @Get('opciones')
+  @Permissions('agenda.leer')
+  @ApiOperation({ summary: 'Consultar pacientes, personal y tratamientos disponibles' })
+  options() {
+    return this.service.options();
   }
   @Get('citas/:id')
   @Permissions('agenda.leer')
@@ -99,7 +105,7 @@ export class AgendaController {
   @Permissions('agenda.leer')
   @ApiOperation({ summary: 'Listar notificaciones de citas' })
   @ApiOkResponse({ schema: paginatedSchema(NotificacionCita) })
-  listNotifications(@Query() q: DomainQueryDto) {
+  listNotifications(@Query() q: AgendaQueryDto) {
     return this.service.listNotifications(q);
   }
   @Get('notificaciones/:id')

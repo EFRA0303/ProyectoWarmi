@@ -5,6 +5,7 @@ import { DomainResourceService } from '../../common/utils/domain-resource.servic
 import type {
   CreateCitaDto,
   CreateNotificacionCitaDto,
+  AgendaQueryDto,
   ReprogramarCitaDto,
   UpdateCitaDto,
   UpdateNotificacionCitaDto,
@@ -42,7 +43,7 @@ export class AgendaService {
         manager,
         dto.id_paciente,
         dto.id_personal,
-        dto.id_tratamiento,
+        dto.id_tratamiento ?? undefined,
         start,
         end,
       );
@@ -54,11 +55,116 @@ export class AgendaService {
       );
     });
   }
-  list(q: DomainQueryDto) {
-    return this.citas.list(q);
+  async list({
+    page,
+    limit,
+    estado,
+    search,
+    desde,
+    hasta,
+    id_paciente,
+    id_personal,
+    id_tratamiento,
+  }: AgendaQueryDto) {
+    const query = this.appointmentDetailsQuery();
+    if (estado) query.andWhere('cita.estado = :estado', { estado });
+    if (id_paciente)
+      query.andWhere('cita.id_paciente = :id_paciente', { id_paciente });
+    if (id_personal)
+      query.andWhere('cita.id_personal = :id_personal', { id_personal });
+    if (id_tratamiento)
+      query.andWhere('cita.id_tratamiento = :id_tratamiento', {
+        id_tratamiento,
+      });
+    if (desde)
+      query.andWhere('cita.fecha_hora_inicio >= :desde', {
+        desde: new Date(desde),
+      });
+    if (hasta)
+      query.andWhere('cita.fecha_hora_inicio <= :hasta', {
+        hasta: new Date(hasta),
+      });
+
+    const normalizedSearch = search?.trim();
+    if (normalizedSearch) {
+      query.andWhere(
+        `(
+          CONCAT_WS(' ', pacientePersona.nombre, pacientePersona.ap_paterno, pacientePersona.ap_materno) ILIKE :search
+          OR pacientePersona.ci ILIKE :search
+          OR CONCAT_WS(' ', personalPersona.nombre, personalPersona.ap_paterno, personalPersona.ap_materno) ILIKE :search
+          OR servicio.nombre ILIKE :search
+          OR cita.observaciones ILIKE :search
+        )`,
+        { search: `%${normalizedSearch}%` },
+      );
+    }
+
+    query
+      .orderBy('cita.fecha_hora_inicio', 'ASC')
+      .skip((page - 1) * limit)
+      .take(limit);
+    const [data, total] = await query.getManyAndCount();
+    return { data, total, page, limit };
   }
-  one(id: number) {
-    return this.citas.one(id);
+  async one(id: number) {
+    const appointment = await this.appointmentDetailsQuery()
+      .andWhere('cita.id_cita = :id', { id })
+      .getOne();
+    if (!appointment) return this.citas.one(id);
+    return appointment;
+  }
+  async options() {
+    const [patients, staff, treatments] = await Promise.all([
+      this.db.query(`
+        SELECT
+          p.id_paciente,
+          pe.nombre,
+          pe.ap_paterno,
+          pe.ap_materno,
+          pe.ci
+        FROM pacientes p
+        INNER JOIN personas pe ON pe.id_persona = p.id_persona
+        WHERE p.estado = 'ACTIVO'
+        ORDER BY pe.nombre, pe.ap_paterno, pe.ap_materno
+      `),
+      this.db.query(`
+        SELECT
+          pl.id_personal,
+          u.id_usuario,
+          u.foto_perfil_ruta,
+          pe.nombre,
+          pe.ap_paterno,
+          pe.ap_materno,
+          pl.profesion,
+          pl.cargo,
+          pl.color_agenda
+        FROM personal pl
+        INNER JOIN usuarios u ON u.id_usuario = pl.id_usuario
+        INNER JOIN personas pe ON pe.id_persona = u.id_persona
+        WHERE pl.estado = 'ACTIVO'
+          AND u.estado = 'ACTIVO'
+          AND UPPER(BTRIM(pl.cargo)) <> 'SECRETARIA'
+        ORDER BY pe.nombre, pe.ap_paterno, pe.ap_materno
+      `),
+      this.db.query(`
+        SELECT
+          t.id_tratamiento,
+          h.id_paciente,
+          t.id_servicio,
+          s.nombre AS servicio,
+          s.duracion_minutos,
+          t.sesiones_iniciales + COALESCE(SUM(a.sesiones_agregadas), 0)::integer AS sesiones_totales,
+          t.estado
+        FROM tratamientos_paciente t
+        INNER JOIN historiales h ON h.id_historial = t.id_historial
+        INNER JOIN servicios s ON s.id_servicio = t.id_servicio
+        LEFT JOIN ampliaciones_tratamiento a ON a.id_tratamiento = t.id_tratamiento
+        WHERE t.estado IN ('PENDIENTE', 'EN_CURSO')
+        GROUP BY t.id_tratamiento, h.id_paciente, s.id_servicio
+        ORDER BY s.nombre, t.id_tratamiento
+      `),
+    ]);
+    return { patients, staff, treatments };
   }
   async update(id: number, dto: UpdateCitaDto) {
     return this.db.transaction(async (manager) => {
@@ -81,13 +187,15 @@ export class AgendaService {
         dto.fecha_hora_fin ||
         dto.id_personal ||
         dto.id_paciente ||
-        dto.id_tratamiento
+        dto.id_tratamiento !== undefined
       )
         await this.ensureAvailability(
           manager,
           dto.id_paciente ?? current.id_paciente,
           dto.id_personal ?? current.id_personal,
-          dto.id_tratamiento ?? current.id_tratamiento ?? undefined,
+          dto.id_tratamiento === null
+            ? undefined
+            : (dto.id_tratamiento ?? current.id_tratamiento ?? undefined),
           start,
           end,
           id,
@@ -150,6 +258,18 @@ export class AgendaService {
   }
   updateNotification(id: number, dto: UpdateNotificacionCitaDto) {
     return this.notifications.update(id, this.mapNotification(dto));
+  }
+  private appointmentDetailsQuery() {
+    return this.db
+      .getRepository(Cita)
+      .createQueryBuilder('cita')
+      .leftJoinAndSelect('cita.paciente', 'paciente')
+      .leftJoinAndSelect('paciente.persona', 'pacientePersona')
+      .leftJoinAndSelect('cita.personal', 'personal')
+      .leftJoinAndSelect('personal.usuario', 'personalUsuario')
+      .leftJoinAndSelect('personalUsuario.persona', 'personalPersona')
+      .leftJoinAndSelect('cita.tratamiento', 'tratamiento')
+      .leftJoinAndSelect('tratamiento.servicio', 'servicio');
   }
   private dates(start: string | Date, end: string | Date) {
     if (new Date(start) >= new Date(end))
@@ -216,11 +336,17 @@ export class AgendaService {
       [patientId],
     )) as unknown[];
     const [staff] = (await manager.query(
-      `SELECT 1 FROM personal WHERE id_personal = $1 AND estado = 'ACTIVO'`,
+      `SELECT 1 FROM personal
+       WHERE id_personal = $1
+         AND estado = 'ACTIVO'
+         AND UPPER(BTRIM(cargo)) <> 'SECRETARIA'`,
       [staffId],
     )) as unknown[];
     if (!patient) throw new BadRequestException('El paciente no esta activo');
-    if (!staff) throw new BadRequestException('El personal no esta activo');
+    if (!staff)
+      throw new BadRequestException(
+        'El personal no esta activo o no realiza atenciones',
+      );
     if (treatmentId) {
       const rows = (await manager.query(
         `SELECT s.duracion_minutos FROM tratamientos_paciente t
