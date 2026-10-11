@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { IsEnum, IsInt, IsOptional, Max, Min } from 'class-validator';
+import { IsEnum, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { EstadoHistorial } from '../../../common/enums/estado-historial.enum.js';
 
@@ -28,4 +28,16 @@ export class HistorialQueryDto {
   @IsOptional()
   @IsEnum(EstadoHistorial)
   estado?: EstadoHistorial;
+
+  @ApiPropertyOptional({ description: 'Busca por paciente, CI o contacto' })
+  @IsOptional()
+  @IsString()
+  search?: string;
+
+  @ApiPropertyOptional({ type: Number, minimum: 1 })
+  @Type(() => Number)
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  id_paciente?: number;
 }

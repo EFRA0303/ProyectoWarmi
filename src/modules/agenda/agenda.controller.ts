@@ -28,6 +28,7 @@ import {
   ReprogramarCitaDto,
   UpdateCitaDto,
   UpdateNotificacionCitaDto,
+  NotificationQueryDto,
 } from './dto/agenda.dto.js';
 import { Cita, NotificacionCita } from './entities/agenda.entities.js';
 @ApiTags('Agenda y citas')
@@ -105,8 +106,14 @@ export class AgendaController {
   @Permissions('agenda.leer')
   @ApiOperation({ summary: 'Listar notificaciones de citas' })
   @ApiOkResponse({ schema: paginatedSchema(NotificacionCita) })
-  listNotifications(@Query() q: AgendaQueryDto) {
+  listNotifications(@Query() q: NotificationQueryDto) {
     return this.service.listNotifications(q);
+  }
+  @Get('notificaciones-opciones/listar')
+  @Permissions('agenda.leer')
+  @ApiOperation({ summary: 'Listar citas disponibles para notificaciones' })
+  notificationOptions() {
+    return this.service.notificationOptions();
   }
   @Get('notificaciones/:id')
   @Permissions('agenda.leer')

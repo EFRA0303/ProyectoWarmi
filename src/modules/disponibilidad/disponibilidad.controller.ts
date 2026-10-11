@@ -64,6 +64,13 @@ export class DisponibilidadController {
     return this.service.createHorario(dto);
   }
 
+  @Get('opciones')
+  @Permissions('disponibilidad.leer')
+  @ApiOperation({ summary: 'Listar especialistas disponibles para configurar' })
+  options() {
+    return this.service.options();
+  }
+
   @Get('horarios')
   @Permissions('disponibilidad.leer')
   @ApiOperation({ summary: 'Listar horarios semanales' })

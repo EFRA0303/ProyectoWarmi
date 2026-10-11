@@ -17,6 +17,12 @@ import { DomainModulesFiveToEleven1790600000000 } from '../dist/database/migrati
 import { BusinessIntegrity1790700000000 } from '../dist/database/migrations/1790700000000-BusinessIntegrity.js';
 import { UserPresence1790800000000 } from '../dist/database/migrations/1790800000000-UserPresence.js';
 import { UserStatusReason1790900000000 } from '../dist/database/migrations/1790900000000-UserStatusReason.js';
+import { StaffColorAndProfilePhoto1791000000000 } from '../dist/database/migrations/1791000000000-StaffColorAndProfilePhoto.js';
+import { ProfilePhotoFileStorage1791100000000 } from '../dist/database/migrations/1791100000000-ProfilePhotoFileStorage.js';
+import { TreatmentPermissions1791200000000 } from '../dist/database/migrations/1791200000000-TreatmentPermissions.js';
+import { EstadoBloqueosPersonal1791300000000 } from '../dist/database/migrations/1791300000000-EstadoBloqueosPersonal.js';
+import { SessionLifecycle1791400000000 } from '../dist/database/migrations/1791400000000-SessionLifecycle.js';
+import { SessionAppointmentActiveUniqueness1791500000000 } from '../dist/database/migrations/1791500000000-SessionAppointmentActiveUniqueness.js';
 import { hashPassword } from '../dist/common/utils/password.js';
 import { Usuario } from '../dist/modules/usuarios/entities/usuario.entity.js';
 import { MailService } from '../dist/modules/auth/mail.service.js';
@@ -60,6 +66,12 @@ describe('Postman con PostgreSQL temporal, sin datos en la base de trabajo', () 
         BusinessIntegrity1790700000000,
         UserPresence1790800000000,
         UserStatusReason1790900000000,
+        StaffColorAndProfilePhoto1791000000000,
+        ProfilePhotoFileStorage1791100000000,
+        TreatmentPermissions1791200000000,
+        EstadoBloqueosPersonal1791300000000,
+        SessionLifecycle1791400000000,
+        SessionAppointmentActiveUniqueness1791500000000,
       ],
     });
     await db.initialize();
@@ -84,6 +96,7 @@ describe('Postman con PostgreSQL temporal, sin datos en la base de trabajo', () 
       'comercial',
       'adquisiciones',
       'clinica',
+      'tratamientos',
       'agenda',
       'ventas',
       'inventario',
@@ -102,6 +115,7 @@ describe('Postman con PostgreSQL temporal, sin datos en la base de trabajo', () 
         'actualizar',
         'asignar',
         'eliminar',
+        'cancelar',
       ]) {
         const [perm] = await db.query(
           `INSERT INTO permisos(permiso) VALUES ($1)
@@ -342,10 +356,45 @@ describe('Postman con PostgreSQL temporal, sin datos en la base de trabajo', () 
       .expect(200);
     expect(closed.body.estado).toBe('CERRADO');
     const list = await api()
-      .get('/historiales?estado=CERRADO')
+      .get('/historiales?estado=CERRADO&search=Ana')
       .set('Authorization', auth())
       .expect(200);
     expect(list.body.total).toBe(1);
+    expect(list.body.data[0]).toEqual(
+      expect.objectContaining({
+        id_historial: historyId,
+        id_paciente: patientId,
+        nombre: 'Ana Maria',
+      }),
+    );
+    const summary = await api()
+      .get(`/historiales/${historyId}/resumen`)
+      .set('Authorization', auth())
+      .expect(200);
+    expect(summary.body.history.id_paciente).toBe(patientId);
+    expect(summary.body).toEqual(
+      expect.objectContaining({
+        requests: [],
+        treatments: [],
+        sessions: [],
+        valuations: [],
+        appointments: [],
+      }),
+    );
+    const options = await api()
+      .get('/historiales/opciones')
+      .set('Authorization', auth())
+      .expect(200);
+    expect(
+      options.body.some(
+        (item: { id_paciente: number }) => item.id_paciente === patientId,
+      ),
+    ).toBe(false);
+    const patients = await api()
+      .get('/pacientes?search=Ana')
+      .set('Authorization', auth())
+      .expect(200);
+    expect(patients.body.data[0].historial.id_historial).toBe(historyId);
     await api()
       .patch('/historiales/' + historyId)
       .set('Authorization', auth())
@@ -1270,6 +1319,82 @@ describe('Postman con PostgreSQL temporal, sin datos en la base de trabajo', () 
       .set('Authorization', auth())
       .send({ id_servicio: serviceId, sesiones_incluidas: 3 })
       .expect(201);
+    const packageOptions = await api()
+      .get('/comercial/paquetes-opciones')
+      .set('Authorization', auth())
+      .expect(200);
+    expect(
+      packageOptions.body.services.some(
+        (item: { id_servicio: number }) => item.id_servicio === serviceId,
+      ),
+    ).toBe(true);
+    await api()
+      .put(`/comercial/paquetes/${pkg.body.id_paquete}/servicios`)
+      .set('Authorization', auth())
+      .send({
+        servicios: [{ id_servicio: serviceId, sesiones_incluidas: 3 }],
+      })
+      .expect(200);
+    const packageList = await api()
+      .get('/comercial/paquetes?search=Terapia&estado=ACTIVO')
+      .set('Authorization', auth())
+      .expect(200);
+    const listedPackage = packageList.body.data.find(
+      (item: { id_paquete: number }) =>
+        item.id_paquete === pkg.body.id_paquete,
+    );
+    expect(listedPackage.servicios[0].sesiones_incluidas).toBe(3);
+    const promotion = await api()
+      .post('/comercial/promociones')
+      .set('Authorization', auth())
+      .send({
+        nombre: 'Promocion E2E',
+        tipo_descuento: 'PORCENTAJE',
+        valor_descuento: '15.00',
+        fecha_inicio: '2030-01-01T08:00:00-04:00',
+        fecha_fin: '2030-02-01T08:00:00-04:00',
+      })
+      .expect(201);
+    const promotionOptions = await api()
+      .get('/comercial/promociones-opciones')
+      .set('Authorization', auth())
+      .expect(200);
+    expect(
+      promotionOptions.body.services.some(
+        (item: { id_servicio: number }) => item.id_servicio === serviceId,
+      ),
+    ).toBe(true);
+    await api()
+      .put(`/comercial/promociones/${promotion.body.id_promocion}/servicios`)
+      .set('Authorization', auth())
+      .send({
+        servicios: [{ id_servicio: serviceId, sesiones_incluidas: 2 }],
+      })
+      .expect(200);
+    const promotionList = await api()
+      .get('/comercial/promociones?search=Terapia&estado=PROGRAMADA')
+      .set('Authorization', auth())
+      .expect(200);
+    const listedPromotion = promotionList.body.data.find(
+      (item: { id_promocion: number }) =>
+        item.id_promocion === promotion.body.id_promocion,
+    );
+    expect(listedPromotion.servicios[0].sesiones_incluidas).toBe(2);
+    await api()
+      .patch(`/comercial/promociones/${promotion.body.id_promocion}`)
+      .set('Authorization', auth())
+      .send({ estado: 'ACTIVA' })
+      .expect(200);
+    await api()
+      .patch(`/comercial/promociones/${promotion.body.id_promocion}`)
+      .set('Authorization', auth())
+      .send({ estado: 'FINALIZADA' })
+      .expect(200);
+    await api()
+      .patch(`/comercial/promociones/${promotion.body.id_promocion}`)
+      .set('Authorization', auth())
+      .send({ nombre: 'No permitido' })
+      .expect(400);
     const acquisition = await api()
       .post('/adquisiciones')
       .set('Authorization', auth())
@@ -1292,6 +1417,25 @@ describe('Postman con PostgreSQL temporal, sin datos en la base de trabajo', () 
       .set('Authorization', auth())
       .expect(200);
     expect(details.body[0].nombre_servicio_snapshot).toBe('Terapia manual');
+    const acquisitionOptions = await api()
+      .get('/adquisiciones/opciones')
+      .set('Authorization', auth())
+      .expect(200);
+    expect(
+      acquisitionOptions.body.offers.some(
+        (item: { id: number; tipo: string }) =>
+          item.id === pkg.body.id_paquete && item.tipo === 'PAQUETE',
+      ),
+    ).toBe(true);
+    const acquisitionList = await api()
+      .get('/adquisiciones?search=Paquete&estado=ACTIVA')
+      .set('Authorization', auth())
+      .expect(200);
+    const listedAcquisition = acquisitionList.body.data.find(
+      (item: { id_adquisicion: number }) =>
+        item.id_adquisicion === acquisition.body.id_adquisicion,
+    );
+    expect(listedAcquisition.sesiones_incluidas).toBe(3);
 
     const application = await api()
       .post('/clinica/solicitudes')
@@ -1302,6 +1446,15 @@ describe('Postman con PostgreSQL temporal, sin datos en la base de trabajo', () 
         fecha_solicitud: '2030-01-01T11:00:00-04:00',
       })
       .expect(201);
+    const requestOptions = await api()
+      .get('/clinica/solicitudes-opciones')
+      .set('Authorization', auth())
+      .expect(200);
+    expect(
+      requestOptions.body.services.some(
+        (item: { id_servicio: number }) => item.id_servicio === serviceId,
+      ),
+    ).toBe(true);
     const valuation = await api()
       .post('/clinica/valoraciones')
       .set('Authorization', auth())
@@ -1313,11 +1466,50 @@ describe('Postman con PostgreSQL temporal, sin datos en la base de trabajo', () 
         fecha_valoracion: '2030-01-01T11:15:00-04:00',
       })
       .expect(201);
+    const applications = await api()
+      .get('/clinica/solicitudes?estado=VALORADO&search=Terapia')
+      .set('Authorization', auth())
+      .expect(200);
+    expect(
+      applications.body.data.some(
+        (item: { id_solicitud: number; valoraciones: number }) =>
+          item.id_solicitud === application.body.id_solicitud &&
+          item.valoraciones === 1,
+      ),
+    ).toBe(true);
     await api()
       .post(`/clinica/valoraciones/${valuation.body.id_valoracion}/medidas`)
       .set('Authorization', auth())
       .send({ id_tipo_medida: measureId, valor: '65.50' })
       .expect(201);
+    const valuationOptions = await api()
+      .get('/clinica/valoraciones-opciones')
+      .set('Authorization', auth())
+      .expect(200);
+    expect(
+      valuationOptions.body.measureTypes.some(
+        (item: { id_tipo_medida: number }) =>
+          item.id_tipo_medida === measureId,
+      ),
+    ).toBe(true);
+    await api()
+      .put(`/clinica/valoraciones/${valuation.body.id_valoracion}/medidas`)
+      .set('Authorization', auth())
+      .send({
+        medidas: [{ id_tipo_medida: measureId, valor: '66.25' }],
+      })
+      .expect(200);
+    const valuations = await api()
+      .get('/clinica/valoraciones?tipo=INICIAL&search=Terapia')
+      .set('Authorization', auth())
+      .expect(200);
+    expect(
+      valuations.body.data.some(
+        (item: { id_valoracion: number; medidas: Array<{ valor: number }> }) =>
+          item.id_valoracion === valuation.body.id_valoracion &&
+          Number(item.medidas[0]?.valor) === 66.25,
+      ),
+    ).toBe(true);
     const treatment = await api()
       .post('/clinica/tratamientos')
       .set('Authorization', auth())
@@ -1332,7 +1524,7 @@ describe('Postman con PostgreSQL temporal, sin datos en la base de trabajo', () 
     expect(treatment.body.estado).toBe('PENDIENTE');
   });
 
-  it('impide cruces de agenda y convierte la cita atendida en sesion', async () => {
+  it('impide cruces de agenda y gestiona el ciclo de vida de una sesion', async () => {
     const [treatment] = await db.query(
       'SELECT id_tratamiento FROM tratamientos_paciente ORDER BY id_tratamiento DESC LIMIT 1',
     );
@@ -1344,8 +1536,8 @@ describe('Postman con PostgreSQL temporal, sin datos en la base de trabajo', () 
         id_tratamiento: treatment.id_tratamiento,
         id_personal: staffId,
         numero_sesion: 1,
-        fecha_hora_inicio: '2030-01-07T09:00:00-04:00',
-        fecha_hora_fin: '2030-01-07T09:45:00-04:00',
+        fecha_hora_inicio: '2025-01-06T09:00:00-04:00',
+        fecha_hora_fin: '2025-01-06T09:45:00-04:00',
       })
       .expect(201);
     await api()
@@ -1354,8 +1546,8 @@ describe('Postman con PostgreSQL temporal, sin datos en la base de trabajo', () 
       .send({
         id_paciente: patientId,
         id_personal: staffId,
-        fecha_hora_inicio: '2030-01-07T09:15:00-04:00',
-        fecha_hora_fin: '2030-01-07T10:00:00-04:00',
+        fecha_hora_inicio: '2025-01-06T09:15:00-04:00',
+        fecha_hora_fin: '2025-01-06T10:00:00-04:00',
       })
       .expect(400);
     await api()
@@ -1363,7 +1555,7 @@ describe('Postman con PostgreSQL temporal, sin datos en la base de trabajo', () 
       .set('Authorization', auth())
       .send({
         estado: 'EN_ESPERA',
-        fecha_llegada: '2030-01-07T08:55:00-04:00',
+        fecha_llegada: '2025-01-06T08:55:00-04:00',
       })
       .expect(200);
     const session = await api()
@@ -1373,15 +1565,87 @@ describe('Postman con PostgreSQL temporal, sin datos en la base de trabajo', () 
         id_tratamiento: treatment.id_tratamiento,
         id_cita: appointment.body.id_cita,
         atendido_por: staffId,
-        fecha_sesion: '2030-01-07T09:00:00-04:00',
+        fecha_sesion: '2025-01-06T09:00:00-04:00',
       })
       .expect(201);
     expect(session.body.id_cita).toBe(appointment.body.id_cita);
+    expect(session.body.estado).toBe('EN_CURSO');
+    expect(session.body.finalizada_en).toBeNull();
+
+    const waiting = await api()
+      .get(`/agenda/citas/${appointment.body.id_cita}`)
+      .set('Authorization', auth())
+      .expect(200);
+    expect(waiting.body.estado).toBe('EN_ESPERA');
+
+    await api()
+      .post('/clinica/sesiones')
+      .set('Authorization', auth())
+      .send({
+        id_tratamiento: treatment.id_tratamiento,
+        id_cita: appointment.body.id_cita,
+        atendido_por: staffId,
+        fecha_sesion: '2025-01-06T09:05:00-04:00',
+      })
+      .expect(400);
+
+    const cancelled = await api()
+      .patch(`/clinica/sesiones/${session.body.id_sesion}/cancelar`)
+      .set('Authorization', auth())
+      .expect(200);
+    expect(cancelled.body.estado).toBe('CANCELADA');
+    expect(cancelled.body.finalizada_en).toBeNull();
+
+    const optionsAfterCancellation = await api()
+      .get('/clinica/sesiones-opciones')
+      .set('Authorization', auth())
+      .expect(200);
+    expect(
+      optionsAfterCancellation.body.appointments.some(
+        (item: { id_cita: number }) =>
+          item.id_cita === appointment.body.id_cita,
+      ),
+    ).toBe(true);
+
+    const restarted = await api()
+      .post('/clinica/sesiones')
+      .set('Authorization', auth())
+      .send({
+        id_tratamiento: treatment.id_tratamiento,
+        id_cita: appointment.body.id_cita,
+        atendido_por: staffId,
+        fecha_sesion: '2025-01-06T09:10:00-04:00',
+      })
+      .expect(201);
+    expect(restarted.body.estado).toBe('EN_CURSO');
+    expect(restarted.body.id_sesion).not.toBe(session.body.id_sesion);
+
+    const finished = await api()
+      .patch(`/clinica/sesiones/${restarted.body.id_sesion}/finalizar`)
+      .set('Authorization', auth())
+      .expect(200);
+    expect(finished.body.estado).toBe('FINALIZADA');
+    expect(finished.body.finalizada_en).toBeTruthy();
+
+    await api()
+      .patch(`/clinica/sesiones/${restarted.body.id_sesion}/cancelar`)
+      .set('Authorization', auth())
+      .expect(400);
+
     const attended = await api()
       .get(`/agenda/citas/${appointment.body.id_cita}`)
       .set('Authorization', auth())
       .expect(200);
     expect(attended.body.estado).toBe('ATENDIDA');
+
+    const sessions = await api()
+      .get(`/clinica/sesiones?id_tratamiento=${treatment.id_tratamiento}`)
+      .set('Authorization', auth())
+      .expect(200);
+    expect(sessions.body.total).toBe(2);
+    expect(
+      sessions.body.data.map((item: { estado: string }) => item.estado),
+    ).toEqual(expect.arrayContaining(['CANCELADA', 'FINALIZADA']));
   });
 
   it('calcula ventas, controla pagos y protege el stock', async () => {
@@ -1418,6 +1682,34 @@ describe('Postman con PostgreSQL temporal, sin datos en la base de trabajo', () 
       .set('Authorization', auth())
       .expect(200);
     expect(initialStock.body.stock).toBe('100.00');
+    const inventoryOptions = await api()
+      .get('/inventario/opciones')
+      .set('Authorization', auth())
+      .expect(200);
+    expect(
+      inventoryOptions.body.lots.some(
+        (item: { id_lote: number }) => item.id_lote === lot.body.id_lote,
+      ),
+    ).toBe(true);
+    const products = await api()
+      .get('/inventario/productos?search=Aceite&estado=ACTIVO')
+      .set('Authorization', auth())
+      .expect(200);
+    const listedProduct = products.body.data.find(
+      (item: { id_producto: number }) =>
+        item.id_producto === product.body.id_producto,
+    );
+    expect(listedProduct.stock_actual).toBe('100.00');
+    const lots = await api()
+      .get('/inventario/lotes?search=E2E-001&estado=DISPONIBLE')
+      .set('Authorization', auth())
+      .expect(200);
+    expect(lots.body.data[0].stock_actual).toBe('100.00');
+    const movements = await api()
+      .get('/inventario/movimientos?tipo=ENTRADA_COMPRA&search=Aceite')
+      .set('Authorization', auth())
+      .expect(200);
+    expect(movements.body.data[0].tipo).toBe('ENTRADA_COMPRA');
     const note = await api()
       .post('/ventas/notas')
       .set('Authorization', auth())
@@ -1435,6 +1727,21 @@ describe('Postman con PostgreSQL temporal, sin datos en la base de trabajo', () 
       })
       .expect(201);
     expect(note.body.total).toBe('20.00');
+    const saleOptions = await api()
+      .get('/ventas/opciones')
+      .set('Authorization', auth())
+      .expect(200);
+    expect(
+      saleOptions.body.notes.some(
+        (item: { id_nota_venta: number }) =>
+          item.id_nota_venta === note.body.id_nota_venta,
+      ),
+    ).toBe(true);
+    const saleNotes = await api()
+      .get('/ventas/notas?search=E2E-0001&estado=EMITIDA')
+      .set('Authorization', auth())
+      .expect(200);
+    expect(saleNotes.body.data[0].saldo).toBe('20.00');
     await api()
       .post('/ventas/pagos')
       .set('Authorization', auth())
@@ -1445,6 +1752,16 @@ describe('Postman con PostgreSQL temporal, sin datos en la base de trabajo', () 
         fecha_pago: '2030-01-07T10:05:00-04:00',
       })
       .expect(201);
+    const payments = await api()
+      .get('/ventas/pagos?search=E2E-0001&tipo=QR&estado=REGISTRADO')
+      .set('Authorization', auth())
+      .expect(200);
+    expect(payments.body.data[0].monto).toBe('15.00');
+    const updatedNotes = await api()
+      .get('/ventas/notas?search=E2E-0001')
+      .set('Authorization', auth())
+      .expect(200);
+    expect(updatedNotes.body.data[0].saldo).toBe('5.00');
     await api()
       .post('/ventas/pagos')
       .set('Authorization', auth())
@@ -1476,6 +1793,21 @@ describe('Postman con PostgreSQL temporal, sin datos en la base de trabajo', () 
         cantidad: '5.00',
       })
       .expect(201);
+    const operationOptions = await api()
+      .get('/inventario/operaciones-opciones')
+      .set('Authorization', auth())
+      .expect(200);
+    expect(Array.isArray(operationOptions.body.lots)).toBe(true);
+    const consumptions = await api()
+      .get('/inventario/consumos-sesion?search=Aceite')
+      .set('Authorization', auth())
+      .expect(200);
+    expect(consumptions.body.data[0].cantidad).toBe('5.00');
+    const saleOutputs = await api()
+      .get('/inventario/salidas-venta?search=Aceite')
+      .set('Authorization', auth())
+      .expect(200);
+    expect(saleOutputs.body.data[0].cantidad).toBe('2.00');
     const stock = await api()
       .get(`/inventario/lotes/${lot.body.id_lote}/stock`)
       .set('Authorization', auth())
@@ -1505,6 +1837,11 @@ describe('Postman con PostgreSQL temporal, sin datos en la base de trabajo', () 
       .send({ id_empresa: company.body.id_empresa, encabezado: 'Warmi E2E' })
       .expect(201);
     expect(config.body.mostrar_logo).toBe(true);
+    const companies = await api()
+      .get('/empresa?search=Warmi')
+      .set('Authorization', auth())
+      .expect(200);
+    expect(companies.body.data[0].nombre_comercial).toBe('Warmi E2E');
   });
 
   it('protege configuraciones obligatorias y permite consultar historiales', async () => {

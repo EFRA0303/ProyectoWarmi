@@ -28,6 +28,9 @@ export class BloqueoPersonal {
   @Column({ type: 'varchar', length: 255, nullable: true })
   motivo: string | null;
 
+  @Column({ type: 'boolean', default: true })
+  estado: boolean;
+
   @ManyToOne('Personal', 'bloqueos', {
     nullable: false,
     onDelete: 'RESTRICT',

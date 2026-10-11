@@ -66,6 +66,20 @@ export class HistorialesController {
     return this.service.findAll(query);
   }
 
+  @Get('opciones')
+  @Permissions('historiales.leer')
+  @ApiOperation({ summary: 'Listar pacientes que todavía no tienen historial' })
+  options() {
+    return this.service.options();
+  }
+
+  @Get(':id/resumen')
+  @Permissions('historiales.leer')
+  @ApiOperation({ summary: 'Consultar el expediente clínico completo' })
+  summary(@Param('id', ParseIntPipe) id: number) {
+    return this.service.summary(id);
+  }
+
   @Get(':id')
   @Permissions('historiales.leer')
   @ApiOperation({ summary: 'Consultar un historial por ID' })

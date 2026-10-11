@@ -7,6 +7,7 @@ import {
   ParseIntPipe,
   Patch,
   Post,
+  Delete,
   Query,
 } from '@nestjs/common';
 import {
@@ -203,5 +204,15 @@ export class CatalogoController {
   @ApiOperation({ summary: 'Listar las medidas configuradas del servicio' })
   findServiceMeasures(@Param('id', ParseIntPipe) id: number) {
     return this.service.findServiceMeasures(id);
+  }
+
+  @Delete('servicios/:id/medidas/:measureId')
+  @Permissions('catalogo.actualizar')
+  @ApiOperation({ summary: 'Desvincular una medida de un servicio' })
+  removeMeasure(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('measureId', ParseIntPipe) measureId: number,
+  ) {
+    return this.service.removeMeasure(id, measureId);
   }
 }

@@ -1,4 +1,5 @@
 import {
+  IsBoolean,
   IsISO8601,
   IsOptional,
   IsString,
@@ -23,4 +24,8 @@ export class UpdateBloqueoPersonalDto {
   @IsString()
   @MaxLength(255)
   motivo?: string | null;
+
+  @IsOptional()
+  @IsBoolean()
+  estado?: boolean;
 }

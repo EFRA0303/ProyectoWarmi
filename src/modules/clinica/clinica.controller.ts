@@ -7,6 +7,7 @@ import {
   ParseIntPipe,
   Patch,
   Post,
+  Put,
   Query,
 } from '@nestjs/common';
 import {
@@ -27,6 +28,7 @@ import {
   CreateTratamientoDto,
   CreateValoracionDto,
   RegistrarMedidaDto,
+  RegistrarMedidasDto,
   UpdateSesionDto,
   UpdateSolicitudDto,
   UpdateTratamientoDto,
@@ -61,6 +63,12 @@ export class ClinicaController {
   listSolicitudes(@Query() q: DomainQueryDto) {
     return this.s.listSolicitudes(q);
   }
+  @Get('solicitudes-opciones')
+  @Permissions('clinica.leer')
+  @ApiOperation({ summary: 'Listar pacientes y servicios para solicitudes' })
+  opcionesSolicitudes() {
+    return this.s.opcionesSolicitudes();
+  }
   @Get('solicitudes/:id')
   @Permissions('clinica.leer')
   @ApiOperation({ summary: 'Consultar una solicitud por ID' })
@@ -81,7 +89,7 @@ export class ClinicaController {
     return this.s.updateSolicitud(id, x);
   }
   @Post('tratamientos')
-  @Permissions('clinica.crear')
+  @Permissions('tratamientos.crear')
   @ApiOperation({
     summary: 'Crear un tratamiento para un paciente',
     description:
@@ -91,20 +99,26 @@ export class ClinicaController {
     return this.s.createTratamiento(d);
   }
   @Get('tratamientos')
-  @Permissions('clinica.leer')
+  @Permissions('tratamientos.leer')
   @ApiOperation({ summary: 'Listar tratamientos de pacientes' })
   @ApiOkResponse({ schema: paginatedSchema(TratamientoPaciente) })
   listTratamientos(@Query() q: DomainQueryDto) {
     return this.s.listTratamientos(q);
   }
+  @Get('tratamientos-opciones')
+  @Permissions('tratamientos.leer')
+  @ApiOperation({ summary: 'Listar opciones para gestionar tratamientos' })
+  opcionesTratamientos() {
+    return this.s.opcionesTratamientos();
+  }
   @Get('tratamientos/:id')
-  @Permissions('clinica.leer')
+  @Permissions('tratamientos.leer')
   @ApiOperation({ summary: 'Consultar un tratamiento por ID' })
   getTratamiento(@Param('id', ParseIntPipe) id: number) {
     return this.s.oneTratamiento(id);
   }
   @Patch('tratamientos/:id')
-  @Permissions('clinica.actualizar')
+  @Permissions('tratamientos.actualizar')
   @ApiOperation({
     summary: 'Actualizar un tratamiento',
     description:
@@ -117,7 +131,7 @@ export class ClinicaController {
     return this.s.updateTratamiento(id, d);
   }
   @Post('tratamientos/:id/ampliaciones')
-  @Permissions('clinica.actualizar')
+  @Permissions('tratamientos.actualizar')
   @ApiOperation({
     summary: 'Ampliar las sesiones de un tratamiento',
     description:
@@ -130,17 +144,23 @@ export class ClinicaController {
     return this.s.ampliar(id, d);
   }
   @Get('tratamientos/:id/ampliaciones')
-  @Permissions('clinica.leer')
+  @Permissions('tratamientos.leer')
   @ApiOperation({ summary: 'Listar ampliaciones de un tratamiento' })
   listAmpliaciones(@Param('id', ParseIntPipe) id: number) {
     return this.s.ampliaciones(id);
   }
+  @Patch('tratamientos/:id/cancelar')
+  @Permissions('tratamientos.cancelar')
+  @ApiOperation({ summary: 'Cancelar un tratamiento de forma lógica' })
+  cancelarTratamiento(@Param('id', ParseIntPipe) id: number) {
+    return this.s.cancelarTratamiento(id);
+  }
   @Post('sesiones')
   @Permissions('clinica.crear')
   @ApiOperation({
-    summary: 'Registrar una sesión clínica',
+    summary: 'Iniciar una sesión clínica',
     description:
-      'Registra la atención, consume una sesión disponible del tratamiento y actualiza la cita relacionada cuando corresponde.',
+      'Inicia la atención en estado EN_CURSO. La sesión se contabiliza y la cita se marca como atendida solamente al finalizarla.',
   })
   createSesion(@Body() d: CreateSesionDto) {
     return this.s.createSesion(d);
@@ -151,6 +171,14 @@ export class ClinicaController {
   @ApiOkResponse({ schema: paginatedSchema(Sesion) })
   listSesiones(@Query() q: DomainQueryDto) {
     return this.s.listSesiones(q);
+  }
+  @Get('sesiones-opciones')
+  @Permissions('clinica.leer')
+  @ApiOperation({
+    summary: 'Listar citas, tratamientos y personal para sesiones',
+  })
+  opcionesSesiones() {
+    return this.s.opcionesSesiones();
   }
   @Get('sesiones/:id')
   @Permissions('clinica.leer')
@@ -166,6 +194,18 @@ export class ClinicaController {
     @Body() d: UpdateSesionDto,
   ) {
     return this.s.updateSesion(id, d);
+  }
+  @Patch('sesiones/:id/finalizar')
+  @Permissions('clinica.actualizar')
+  @ApiOperation({ summary: 'Finalizar una sesión clínica en curso' })
+  finalizarSesion(@Param('id', ParseIntPipe) id: number) {
+    return this.s.finalizarSesion(id);
+  }
+  @Patch('sesiones/:id/cancelar')
+  @Permissions('clinica.actualizar')
+  @ApiOperation({ summary: 'Cancelar lógicamente una sesión clínica en curso' })
+  cancelarSesion(@Param('id', ParseIntPipe) id: number) {
+    return this.s.cancelarSesion(id);
   }
   @Post('valoraciones')
   @Permissions('clinica.crear')
@@ -183,6 +223,14 @@ export class ClinicaController {
   @ApiOkResponse({ schema: paginatedSchema(Valoracion) })
   listValoraciones(@Query() q: DomainQueryDto) {
     return this.s.listValoraciones(q);
+  }
+  @Get('valoraciones-opciones')
+  @Permissions('clinica.leer')
+  @ApiOperation({
+    summary: 'Listar pacientes, orígenes, personal y medidas para valoraciones',
+  })
+  opcionesValoraciones() {
+    return this.s.opcionesValoraciones();
   }
   @Get('valoraciones/:id')
   @Permissions('clinica.leer')
@@ -217,5 +265,16 @@ export class ClinicaController {
   @ApiOperation({ summary: 'Listar medidas de una valoración' })
   listMedidas(@Param('id', ParseIntPipe) id: number) {
     return this.s.medidas(id);
+  }
+  @Put('valoraciones/:id/medidas')
+  @Permissions('clinica.actualizar')
+  @ApiOperation({
+    summary: 'Registrar o actualizar varias medidas de una valoración',
+  })
+  setMedidas(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() d: RegistrarMedidasDto,
+  ) {
+    return this.s.setMedidas(id, d.medidas);
   }
 }

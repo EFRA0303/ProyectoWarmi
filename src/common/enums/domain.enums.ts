@@ -42,6 +42,11 @@ export enum EstadoTratamiento {
   FINALIZADO = 'FINALIZADO',
   CANCELADO = 'CANCELADO',
 }
+export enum EstadoSesion {
+  EN_CURSO = 'EN_CURSO',
+  FINALIZADA = 'FINALIZADA',
+  CANCELADA = 'CANCELADA',
+}
 export enum TipoValoracion {
   INICIAL = 'INICIAL',
   EVOLUCION = 'EVOLUCION',

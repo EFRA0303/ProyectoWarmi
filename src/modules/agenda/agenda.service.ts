@@ -1,11 +1,11 @@
 import { BadRequestException, Inject, Injectable } from '@nestjs/common';
 import { DataSource, EntityManager } from 'typeorm';
-import type { DomainQueryDto } from '../../common/dto/domain-query.dto.js';
 import { DomainResourceService } from '../../common/utils/domain-resource.service.js';
 import type {
   CreateCitaDto,
   CreateNotificacionCitaDto,
   AgendaQueryDto,
+  NotificationQueryDto,
   ReprogramarCitaDto,
   UpdateCitaDto,
   UpdateNotificacionCitaDto,
@@ -44,6 +44,7 @@ export class AgendaService {
         dto.id_paciente,
         dto.id_personal,
         dto.id_tratamiento ?? undefined,
+        dto.numero_sesion ?? undefined,
         start,
         end,
       );
@@ -154,6 +155,11 @@ export class AgendaService {
           s.nombre AS servicio,
           s.duracion_minutos,
           t.sesiones_iniciales + COALESCE(SUM(a.sesiones_agregadas), 0)::integer AS sesiones_totales,
+          COALESCE((
+            SELECT MAX(c.numero_sesion)
+            FROM citas c
+            WHERE c.id_tratamiento = t.id_tratamiento
+          ), 0)::integer + 1 AS siguiente_sesion,
           t.estado
         FROM tratamientos_paciente t
         INNER JOIN historiales h ON h.id_historial = t.id_historial
@@ -187,7 +193,8 @@ export class AgendaService {
         dto.fecha_hora_fin ||
         dto.id_personal ||
         dto.id_paciente ||
-        dto.id_tratamiento !== undefined
+        dto.id_tratamiento !== undefined ||
+        dto.numero_sesion !== undefined
       )
         await this.ensureAvailability(
           manager,
@@ -196,6 +203,9 @@ export class AgendaService {
           dto.id_tratamiento === null
             ? undefined
             : (dto.id_tratamiento ?? current.id_tratamiento ?? undefined),
+          dto.numero_sesion === null
+            ? undefined
+            : (dto.numero_sesion ?? current.numero_sesion ?? undefined),
           start,
           end,
           id,
@@ -221,6 +231,7 @@ export class AgendaService {
         cita.id_paciente,
         cita.id_personal,
         cita.id_tratamiento ?? undefined,
+        cita.numero_sesion ?? undefined,
         new Date(dto.inicio_nuevo),
         new Date(dto.fin_nuevo),
         id,
@@ -250,9 +261,13 @@ export class AgendaService {
   createNotification(dto: CreateNotificacionCitaDto) {
     return this.notifications.create(this.mapNotification(dto));
   }
-  listNotifications(q: DomainQueryDto) {
-    return this.notifications.list(q);
+  async listNotifications(q: NotificationQueryDto) {
+    const values: unknown[]=[];const conditions:string[]=[];const parameter=(value:unknown)=>{values.push(value);return `$${values.length}`};
+    if(q.estado)conditions.push(`n.estado::text=${parameter(q.estado)}`);if(q.tipo)conditions.push(`n.tipo::text=${parameter(q.tipo)}`);
+    if(q.search){const value=parameter(`%${q.search}%`);conditions.push(`(pe.nombre ILIKE ${value} OR pe.ap_paterno ILIKE ${value} OR sv.nombre ILIKE ${value})`)}
+    const where=conditions.length?`WHERE ${conditions.join(' AND ')}`:'';const[count]=(await this.db.manager.query(`SELECT COUNT(*)::int AS total FROM notificaciones_cita n JOIN citas c ON c.id_cita=n.id_cita JOIN pacientes pa ON pa.id_paciente=c.id_paciente JOIN personas pe ON pe.id_persona=pa.id_persona LEFT JOIN tratamientos_paciente t ON t.id_tratamiento=c.id_tratamiento LEFT JOIN servicios sv ON sv.id_servicio=t.id_servicio ${where}`,values))as Array<{total:number}>;const limit=parameter(q.limit),offset=parameter((q.page-1)*q.limit);const data=await this.db.manager.query(`SELECT n.*,c.fecha_hora_inicio,pe.nombre||' '||pe.ap_paterno||' '||pe.ap_materno AS paciente,COALESCE(sv.nombre,'Cita general') AS servicio FROM notificaciones_cita n JOIN citas c ON c.id_cita=n.id_cita JOIN pacientes pa ON pa.id_paciente=c.id_paciente JOIN personas pe ON pe.id_persona=pa.id_persona LEFT JOIN tratamientos_paciente t ON t.id_tratamiento=c.id_tratamiento LEFT JOIN servicios sv ON sv.id_servicio=t.id_servicio ${where} ORDER BY n.programada_para DESC LIMIT ${limit} OFFSET ${offset}`,values);return{data,total:Number(count?.total??0),page:q.page,limit:q.limit};
   }
+  async notificationOptions(){return this.db.manager.query(`SELECT c.id_cita,c.fecha_hora_inicio,c.estado,pe.nombre||' '||pe.ap_paterno||' '||pe.ap_materno AS paciente,COALESCE(sv.nombre,'Cita general') AS servicio FROM citas c JOIN pacientes pa ON pa.id_paciente=c.id_paciente JOIN personas pe ON pe.id_persona=pa.id_persona LEFT JOIN tratamientos_paciente t ON t.id_tratamiento=c.id_tratamiento LEFT JOIN servicios sv ON sv.id_servicio=t.id_servicio WHERE c.estado IN ('PROGRAMADA','EN_ESPERA') ORDER BY c.fecha_hora_inicio ASC`)}
   oneNotification(id: number) {
     return this.notifications.one(id);
   }
@@ -327,6 +342,7 @@ export class AgendaService {
     patientId: number,
     staffId: number,
     treatmentId: number | undefined,
+    sessionNumber: number | undefined,
     start: Date,
     end: Date,
     excludeId?: number,
@@ -347,18 +363,47 @@ export class AgendaService {
       throw new BadRequestException(
         'El personal no esta activo o no realiza atenciones',
       );
+    if (!treatmentId && sessionNumber)
+      throw new BadRequestException(
+        'El numero de sesion requiere un tratamiento',
+      );
     if (treatmentId) {
+      if (!sessionNumber)
+        throw new BadRequestException(
+          'Debes indicar el numero de sesion del tratamiento',
+        );
       const rows = (await manager.query(
-        `SELECT s.duracion_minutos FROM tratamientos_paciente t
+        `SELECT
+           s.duracion_minutos,
+           t.sesiones_iniciales + COALESCE((
+             SELECT SUM(a.sesiones_agregadas)
+             FROM ampliaciones_tratamiento a
+             WHERE a.id_tratamiento = t.id_tratamiento
+           ), 0)::integer AS sesiones_totales
+         FROM tratamientos_paciente t
          JOIN historiales h ON h.id_historial = t.id_historial
          JOIN servicios s ON s.id_servicio = t.id_servicio
          WHERE t.id_tratamiento = $1 AND h.id_paciente = $2
            AND t.estado IN ('PENDIENTE','EN_CURSO')`,
         [treatmentId, patientId],
-      )) as Array<{ duracion_minutos: number }>;
+      )) as Array<{ duracion_minutos: number; sesiones_totales: number }>;
       if (!rows.length)
         throw new BadRequestException(
           'El tratamiento no corresponde al paciente o no esta vigente',
+        );
+      if (sessionNumber > Number(rows[0].sesiones_totales))
+        throw new BadRequestException(
+          `El tratamiento solo dispone de ${rows[0].sesiones_totales} sesiones`,
+        );
+      const duplicated = (await manager.query(
+        `SELECT 1 FROM citas
+         WHERE id_tratamiento = $1 AND numero_sesion = $2
+           AND ($3::integer IS NULL OR id_cita <> $3)`,
+        [treatmentId, sessionNumber, excludeId ?? null],
+      )) as unknown[];
+      if (duplicated.length)
+        throw new BadRequestException(
+          'Ese numero de sesion ya fue reservado para el tratamiento',
         );
       if (
         (end.getTime() - start.getTime()) / 60000 !==
@@ -388,6 +433,7 @@ export class AgendaService {
     const blocked = (await manager.query(
       `SELECT 1 FROM bloqueos_personal
        WHERE id_personal = $1
+         AND estado = true
          AND fecha_hora_inicio < $3 AND fecha_hora_fin > $2`,
       [staffId, start, end],
     )) as unknown[];

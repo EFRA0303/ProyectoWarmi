@@ -28,6 +28,27 @@ import { HorarioPersonal } from './entities/horario-personal.entity.js';
 export class DisponibilidadService {
   constructor(@Inject(DataSource) private readonly db: DataSource) {}
 
+  async options() {
+    return this.db.query(`
+      SELECT
+        pl.id_personal,
+        u.id_usuario,
+        u.foto_perfil_ruta,
+        pe.nombre,
+        pe.ap_paterno,
+        pe.ap_materno,
+        pl.profesion,
+        pl.cargo,
+        pl.color_agenda,
+        pl.estado
+      FROM personal pl
+      INNER JOIN usuarios u ON u.id_usuario = pl.id_usuario
+      INNER JOIN personas pe ON pe.id_persona = u.id_persona
+      WHERE UPPER(BTRIM(pl.cargo)) <> 'SECRETARIA'
+      ORDER BY pe.nombre, pe.ap_paterno, pe.ap_materno
+    `);
+  }
+
   async createHorario(dto: CreateHorarioPersonalDto) {
     this.validateTimeRange(dto.hora_inicio, dto.hora_fin);
     return this.db.transaction(async (manager) => {
@@ -200,7 +221,7 @@ export class DisponibilidadService {
   }
 
   async findBlocks(query: BloqueoPersonalQueryDto) {
-    const { page, limit, id_personal } = query;
+    const { page, limit, id_personal, estado } = query;
     const builder = this.db
       .getRepository(BloqueoPersonal)
       .createQueryBuilder('bloqueo')
@@ -209,6 +230,8 @@ export class DisponibilidadService {
       .take(limit);
     if (id_personal !== undefined)
       builder.andWhere('bloqueo.id_personal = :id_personal', { id_personal });
+    if (estado !== undefined)
+      builder.andWhere('bloqueo.estado = :estado', { estado });
     const [data, total] = await builder.getManyAndCount();
     return { data, total, page, limit };
   }
@@ -236,13 +259,23 @@ export class DisponibilidadService {
         ? new Date(dto.fecha_hora_fin)
         : row.fecha_hora_fin;
       this.validateDateRange(start, end);
-      await this.ensureActiveStaff(manager, row.id_personal);
-      await this.ensureBlockAvailable(manager, row.id_personal, start, end, id);
+      const active = dto.estado ?? row.estado;
+      if (active) {
+        await this.ensureActiveStaff(manager, row.id_personal);
+        await this.ensureBlockAvailable(
+          manager,
+          row.id_personal,
+          start,
+          end,
+          id,
+        );
+      }
       return repository.save(
         repository.merge(row, {
           fecha_hora_inicio: start,
           fecha_hora_fin: end,
           motivo: dto.motivo,
+          estado: dto.estado,
         }),
       );
     });
@@ -330,6 +363,7 @@ export class DisponibilidadService {
       .getRepository(BloqueoPersonal)
       .createQueryBuilder('bloqueo')
       .where('bloqueo.id_personal = :staffId', { staffId })
+      .andWhere('bloqueo.estado = true')
       .andWhere('bloqueo.fecha_hora_inicio < :end', { end })
       .andWhere('bloqueo.fecha_hora_fin > :start', { start });
     if (excludedId !== undefined)

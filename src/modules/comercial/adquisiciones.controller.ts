@@ -36,6 +36,12 @@ export class AdquisicionesController {
     @Inject(AdquisicionesService)
     private readonly service: AdquisicionesService,
   ) {}
+  @Get('opciones')
+  @Permissions('adquisiciones.leer')
+  @ApiOperation({ summary: 'Listar pacientes y ofertas disponibles' })
+  options() {
+    return this.service.options();
+  }
   @Post()
   @Permissions('adquisiciones.crear')
   @ApiOperation({

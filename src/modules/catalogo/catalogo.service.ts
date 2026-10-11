@@ -73,6 +73,7 @@ export class CatalogoService {
     const builder = this.db
       .getRepository(CategoriaServicio)
       .createQueryBuilder('categoria')
+      .leftJoinAndSelect('categoria.area', 'area')
       .orderBy('categoria.id_area', 'ASC')
       .addOrderBy('categoria.nombre', 'ASC')
       .skip((page - 1) * limit)
@@ -87,7 +88,10 @@ export class CatalogoService {
   async findCategory(id: number) {
     const row = await this.db
       .getRepository(CategoriaServicio)
-      .findOneBy({ id_categoria: id });
+      .findOne({
+        where: { id_categoria: id },
+        relations: { area: true },
+      });
     if (!row) throw new NotFoundException('Categoria no encontrada');
     return row;
   }
@@ -117,6 +121,10 @@ export class CatalogoService {
     const builder = this.db
       .getRepository(Servicio)
       .createQueryBuilder('servicio')
+      .leftJoinAndSelect('servicio.categoria', 'categoria')
+      .leftJoinAndSelect('categoria.area', 'area')
+      .leftJoinAndSelect('servicio.medidas', 'medida')
+      .leftJoinAndSelect('medida.tipoMedida', 'tipoMedida')
       .orderBy('servicio.id_categoria', 'ASC')
       .addOrderBy('servicio.nombre', 'ASC')
       .skip((page - 1) * limit)
@@ -137,7 +145,13 @@ export class CatalogoService {
   async findService(id: number) {
     const row = await this.db
       .getRepository(Servicio)
-      .findOneBy({ id_servicio: id });
+      .findOne({
+        where: { id_servicio: id },
+        relations: {
+          categoria: { area: true },
+          medidas: { tipoMedida: true },
+        },
+      });
     if (!row) throw new NotFoundException('Servicio no encontrado');
     return row;
   }
@@ -231,6 +245,24 @@ export class CatalogoService {
       relations: { tipoMedida: true },
       order: { id_tipo_medida: 'ASC' },
     });
+  }
+
+  async removeMeasure(serviceId: number, measureId: number) {
+    if (
+      !(await this.db
+        .getRepository(Servicio)
+        .existsBy({ id_servicio: serviceId }))
+    )
+      throw new NotFoundException('Servicio no encontrado');
+    const repository = this.db.getRepository(ServicioMedida);
+    const relation = await repository.findOneBy({
+      id_servicio: serviceId,
+      id_tipo_medida: measureId,
+    });
+    if (!relation)
+      throw new NotFoundException('La medida no esta vinculada al servicio');
+    await repository.remove(relation);
+    return { message: 'Medida desvinculada correctamente' };
   }
 
   private async ensureActiveArea(manager: EntityManager, id: number) {

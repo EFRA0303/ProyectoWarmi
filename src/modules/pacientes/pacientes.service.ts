@@ -86,7 +86,8 @@ export class PacientesService extends CrudService<Paciente> {
     const query = this.repository
       .createQueryBuilder('paciente')
       .leftJoinAndSelect('paciente.persona', 'persona')
-      .leftJoinAndSelect('persona.usuario', 'usuario');
+      .leftJoinAndSelect('persona.usuario', 'usuario')
+      .leftJoinAndSelect('paciente.historial', 'historial');
 
     if (estado) query.andWhere('paciente.estado = :estado', { estado });
     const normalizedSearch = search?.trim();

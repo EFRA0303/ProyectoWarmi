@@ -88,8 +88,36 @@ export class VentasService {
       return Object.assign({}, nota, { detalles: savedDetails });
     });
   }
-  listNotas(q: DomainQueryDto) {
-    return this.notas.list(q);
+  async listNotas(q: DomainQueryDto) {
+    const { where, values, parameter } = this.saleFilters(q, 'n', [
+      'n.numero_nota',
+      "COALESCE(pe.nombre || ' ' || pe.ap_paterno || ' ' || pe.ap_materno, '')",
+      "COALESCE(n.observaciones, '')",
+    ]);
+    const sqlWhere = where.length ? `WHERE ${where.join(' AND ')}` : '';
+    const [count] = (await this.db.manager.query(
+      `SELECT COUNT(*)::int AS total FROM notas_venta n LEFT JOIN pacientes pa ON pa.id_paciente = n.id_paciente LEFT JOIN personas pe ON pe.id_persona = pa.id_persona ${sqlWhere}`,
+      values,
+    )) as Array<{ total: number }>;
+    const limit = parameter(q.limit);
+    const offset = parameter((q.page - 1) * q.limit);
+    const data = await this.db.manager.query(
+      `SELECT n.*, COALESCE(pe.nombre || ' ' || pe.ap_paterno || ' ' || pe.ap_materno, 'Venta general') AS paciente,
+              em.nombre || ' ' || em.ap_paterno AS emitido_por_nombre,
+              (SELECT COUNT(*)::int FROM detalles_nota_venta d WHERE d.id_nota_venta = n.id_nota_venta) AS detalles,
+              COALESCE((SELECT SUM(pg.monto) FROM pagos pg WHERE pg.id_nota_venta = n.id_nota_venta AND pg.estado = 'REGISTRADO'), 0)::numeric(10,2) AS pagado,
+              (n.total - COALESCE((SELECT SUM(pg.monto) FROM pagos pg WHERE pg.id_nota_venta = n.id_nota_venta AND pg.estado = 'REGISTRADO'), 0))::numeric(10,2) AS saldo
+       FROM notas_venta n
+       LEFT JOIN pacientes pa ON pa.id_paciente = n.id_paciente
+       LEFT JOIN personas pe ON pe.id_persona = pa.id_persona
+       JOIN usuarios u ON u.id_usuario = n.emitido_por
+       JOIN personas em ON em.id_persona = u.id_persona
+       ${sqlWhere}
+       ORDER BY n.fecha_emision DESC, n.id_nota_venta DESC
+       LIMIT ${limit} OFFSET ${offset}`,
+      values,
+    );
+    return { data, total: Number(count?.total ?? 0), page: q.page, limit: q.limit };
   }
   oneNota(id: number) {
     return this.notas.one(id);
@@ -144,8 +172,36 @@ export class VentasService {
       );
     });
   }
-  listPagos(q: DomainQueryDto) {
-    return this.pagos.list(q);
+  async listPagos(q: DomainQueryDto) {
+    const { where, values, parameter } = this.saleFilters(q, 'p', [
+      'n.numero_nota',
+      "COALESCE(pe.nombre || ' ' || pe.ap_paterno || ' ' || pe.ap_materno, '')",
+      "COALESCE(p.observaciones, '')",
+    ]);
+    if (q.tipo) where.push(`p.metodo_pago::text = ${parameter(q.tipo.toUpperCase())}`);
+    const sqlWhere = where.length ? `WHERE ${where.join(' AND ')}` : '';
+    const [count] = (await this.db.manager.query(
+      `SELECT COUNT(*)::int AS total FROM pagos p JOIN notas_venta n ON n.id_nota_venta = p.id_nota_venta LEFT JOIN pacientes pa ON pa.id_paciente = n.id_paciente LEFT JOIN personas pe ON pe.id_persona = pa.id_persona ${sqlWhere}`,
+      values,
+    )) as Array<{ total: number }>;
+    const limit = parameter(q.limit);
+    const offset = parameter((q.page - 1) * q.limit);
+    const data = await this.db.manager.query(
+      `SELECT p.*, n.numero_nota, n.total AS total_nota,
+              COALESCE(pe.nombre || ' ' || pe.ap_paterno || ' ' || pe.ap_materno, 'Venta general') AS paciente,
+              rp.nombre || ' ' || rp.ap_paterno AS registrado_por_nombre
+       FROM pagos p
+       JOIN notas_venta n ON n.id_nota_venta = p.id_nota_venta
+       LEFT JOIN pacientes pa ON pa.id_paciente = n.id_paciente
+       LEFT JOIN personas pe ON pe.id_persona = pa.id_persona
+       JOIN usuarios u ON u.id_usuario = p.registrado_por
+       JOIN personas rp ON rp.id_persona = u.id_persona
+       ${sqlWhere}
+       ORDER BY p.fecha_pago DESC, p.id_pago DESC
+       LIMIT ${limit} OFFSET ${offset}`,
+      values,
+    );
+    return { data, total: Number(count?.total ?? 0), page: q.page, limit: q.limit };
   }
   onePago(id: number) {
     return this.pagos.one(id);
@@ -159,6 +215,30 @@ export class VentasService {
     if (current.estado === EstadoPago.ANULADO)
       throw new BadRequestException('El pago ya esta anulado');
     return this.pagos.update(id, d);
+  }
+  async options() {
+    const [patients, acquisitions, services, products, packages, notes] =
+      await Promise.all([
+        this.db.manager.query(`SELECT pa.id_paciente, pe.nombre, pe.ap_paterno, pe.ap_materno, pe.ci FROM pacientes pa JOIN personas pe ON pe.id_persona = pa.id_persona WHERE pa.estado = 'ACTIVO' ORDER BY pe.ap_paterno, pe.nombre`),
+        this.db.manager.query(`SELECT a.id_adquisicion, a.id_paciente, a.total, a.fecha_adquisicion, COALESCE(pq.nombre, pr.nombre, 'Adquisición') AS concepto FROM adquisiciones a LEFT JOIN paquetes pq ON pq.id_paquete = a.id_paquete LEFT JOIN promociones pr ON pr.id_promocion = a.id_promocion LEFT JOIN notas_venta n ON n.id_adquisicion = a.id_adquisicion WHERE a.estado <> 'CANCELADA' AND n.id_nota_venta IS NULL ORDER BY a.fecha_adquisicion DESC`),
+        this.db.manager.query(`SELECT s.id_servicio AS id, s.nombre, 'SERVICIO' AS tipo FROM servicios s JOIN categorias_servicio c ON c.id_categoria = s.id_categoria JOIN areas a ON a.id_area = c.id_area WHERE s.estado = 'ACTIVO' AND c.estado = 'ACTIVO' AND a.estado = 'ACTIVO' ORDER BY s.nombre`),
+        this.db.manager.query(`SELECT id_producto AS id, nombre, 'PRODUCTO' AS tipo, unidad_medida FROM productos WHERE estado = 'ACTIVO' AND es_vendible = true ORDER BY nombre`),
+        this.db.manager.query(`SELECT id_paquete AS id, nombre, 'PAQUETE' AS tipo, precio FROM paquetes WHERE estado = 'ACTIVO' ORDER BY nombre`),
+        this.db.manager.query(`SELECT n.id_nota_venta, n.numero_nota, n.total, COALESCE(pe.nombre || ' ' || pe.ap_paterno, 'Venta general') AS paciente, (n.total - COALESCE(SUM(p.monto) FILTER (WHERE p.estado = 'REGISTRADO'), 0))::numeric(10,2) AS saldo FROM notas_venta n LEFT JOIN pacientes pa ON pa.id_paciente = n.id_paciente LEFT JOIN personas pe ON pe.id_persona = pa.id_persona LEFT JOIN pagos p ON p.id_nota_venta = n.id_nota_venta WHERE n.estado = 'EMITIDA' GROUP BY n.id_nota_venta, pe.id_persona HAVING n.total - COALESCE(SUM(p.monto) FILTER (WHERE p.estado = 'REGISTRADO'), 0) > 0 ORDER BY n.fecha_emision DESC`),
+      ]);
+    return { patients, acquisitions, items: [...services, ...products, ...packages], notes };
+  }
+  private saleFilters(q: DomainQueryDto, alias: string, search: string[]) {
+    const where: string[] = [];
+    const values: unknown[] = [];
+    const parameter = (value: unknown) => { values.push(value); return `$${values.length}`; };
+    if (q.estado) where.push(`${alias}.estado::text = ${parameter(q.estado.toUpperCase())}`);
+    if (q.id_paciente) where.push(`n.id_paciente = ${parameter(q.id_paciente)}`);
+    const dateColumn = alias === 'n' ? 'n.fecha_emision' : 'p.fecha_pago';
+    if (q.desde) where.push(`${dateColumn} >= ${parameter(q.desde)}`);
+    if (q.hasta) where.push(`${dateColumn} <= ${parameter(q.hasta)}`);
+    if (q.search) { const value = parameter(`%${q.search}%`); where.push(`(${search.map((column) => `${column} ILIKE ${value}`).join(' OR ')})`); }
+    return { where, values, parameter };
   }
   private validateItem(d: {
     id_servicio?: number;

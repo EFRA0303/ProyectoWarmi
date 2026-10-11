@@ -75,10 +75,12 @@ export class AccesosUsuarioService {
   }
 
   async findAll(query: AccessQueryDto) {
-    const { page, limit, id_usuario, login_exitoso } = query;
+    const { page, limit, id_usuario, login_exitoso, search } = query;
     const builder = this.db
       .getRepository(AccesoUsuario)
       .createQueryBuilder('access')
+      .leftJoinAndSelect('access.usuario', 'usuario')
+      .leftJoinAndSelect('usuario.persona', 'persona')
       .orderBy('access.fecha_login', 'DESC')
       .addOrderBy('access.id_acceso', 'DESC')
       .skip((page - 1) * limit)
@@ -89,6 +91,8 @@ export class AccesosUsuarioService {
       builder.andWhere('access.login_exitoso = :login_exitoso', {
         login_exitoso,
       });
+    if (search)
+      builder.andWhere(`(access.identificador_intento ILIKE :search OR access.ip ILIKE :search OR persona.nombre ILIKE :search OR persona.ap_paterno ILIKE :search)`, { search: `%${search}%` });
     const [data, total] = await builder.getManyAndCount();
     return { data, total, page, limit };
   }
@@ -99,6 +103,7 @@ export class AccesosUsuarioService {
       limit: query.limit,
       id_usuario: userId,
       login_exitoso: query.login_exitoso,
+      search: query.search,
     });
   }
 
@@ -108,6 +113,7 @@ export class AccesosUsuarioService {
       limit: query.limit,
       id_usuario: query.id_usuario,
       login_exitoso: true,
+      search: query.search,
     });
   }
 
@@ -117,6 +123,7 @@ export class AccesosUsuarioService {
       limit: query.limit,
       id_usuario: query.id_usuario,
       login_exitoso: false,
+      search: query.search,
     });
   }
 

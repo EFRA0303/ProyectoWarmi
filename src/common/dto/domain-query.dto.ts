@@ -37,6 +37,11 @@ export class DomainQueryDto {
   @IsString()
   search?: string;
 
+  @ApiPropertyOptional({ description: 'Filtra por el tipo exacto del recurso' })
+  @IsOptional()
+  @IsString()
+  tipo?: string;
+
   @ApiPropertyOptional({ description: 'Inicio del rango de fechas' })
   @IsOptional()
   @IsDateString()

@@ -51,6 +51,18 @@ import {
 @Controller('inventario')
 export class InventarioController {
   constructor(@Inject(InventarioService) private s: InventarioService) {}
+  @Get('opciones')
+  @Permissions('inventario.leer')
+  @ApiOperation({ summary: 'Listar opciones para la gestión de inventario' })
+  options() {
+    return this.s.options();
+  }
+  @Get('operaciones-opciones')
+  @Permissions('inventario.leer')
+  @ApiOperation({ summary: 'Listar sesiones y ventas pendientes de salida' })
+  operationOptions() {
+    return this.s.operationOptions();
+  }
   @Post('productos')
   @Permissions('inventario.crear')
   @ApiOperation({ summary: 'Crear un producto de inventario' })

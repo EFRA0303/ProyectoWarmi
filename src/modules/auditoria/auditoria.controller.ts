@@ -9,7 +9,7 @@ import {
 import { ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { AuditoriaService } from './auditoria.service.js';
 import { Permissions } from '../../common/decorators/permissions.decorator.js';
-import { PaginationDto } from '../../common/dto/pagination.dto.js';
+import { DomainQueryDto } from '../../common/dto/domain-query.dto.js';
 
 @ApiBearerAuth('access-token')
 @Controller('auditoria')
@@ -20,8 +20,8 @@ export class AuditoriaController {
   ) {}
   @Get()
   @ApiOperation({ summary: 'Listar eventos de auditoría' })
-  findAll(@Query() query: PaginationDto) {
-    return this.service.findAll(query);
+  findAll(@Query() query: DomainQueryDto) {
+    return this.service.findAllDetailed(query);
   }
   @Get(':id')
   @ApiOperation({ summary: 'Consultar un evento de auditoría por ID' })

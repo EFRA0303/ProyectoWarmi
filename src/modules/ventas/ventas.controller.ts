@@ -35,6 +35,12 @@ import { NotaVenta, Pago } from './entities/ventas.entities.js';
 @Controller('ventas')
 export class VentasController {
   constructor(@Inject(VentasService) private s: VentasService) {}
+  @Get('opciones')
+  @Permissions('ventas.leer')
+  @ApiOperation({ summary: 'Listar opciones para notas de venta y pagos' })
+  options() {
+    return this.s.options();
+  }
   @Post('notas')
   @Permissions('ventas.crear')
   @ApiOperation({

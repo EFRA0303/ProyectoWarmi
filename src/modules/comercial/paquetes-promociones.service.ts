@@ -44,8 +44,73 @@ export class PaquetesPromocionesService {
   createPaquete(dto: CreatePaqueteDto) {
     return this.paquetes.create(dto);
   }
-  listPaquetes(query: DomainQueryDto) {
-    return this.paquetes.list(query);
+  async listPaquetes(query: DomainQueryDto) {
+    const { page, limit, estado, search } = query;
+    const conditions: string[] = [];
+    const values: unknown[] = [];
+    const parameter = (value: unknown) => {
+      values.push(value);
+      return `$${values.length}`;
+    };
+    if (estado)
+      conditions.push(`p.estado::text = ${parameter(estado.toUpperCase())}`);
+    if (search) {
+      const value = parameter(`%${search}%`);
+      conditions.push(`(
+        p.nombre ILIKE ${value}
+        OR COALESCE(p.descripcion, '') ILIKE ${value}
+        OR EXISTS (
+          SELECT 1 FROM paquetes_servicios ps
+          JOIN servicios s ON s.id_servicio = ps.id_servicio
+          WHERE ps.id_paquete = p.id_paquete AND s.nombre ILIKE ${value}
+        )
+      )`);
+    }
+    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+    const [count] = (await this.db.manager.query(
+      `SELECT COUNT(*)::int AS total FROM paquetes p ${where}`,
+      values,
+    )) as Array<{ total: number }>;
+    const limitParameter = parameter(limit);
+    const offsetParameter = parameter((page - 1) * limit);
+    const data = (await this.db.manager.query(
+      `SELECT p.id_paquete, p.nombre, p.descripcion, p.precio, p.estado,
+              COALESCE((
+                SELECT jsonb_agg(jsonb_build_object(
+                  'id_servicio', ps.id_servicio,
+                  'servicio', s.nombre,
+                  'sesiones_incluidas', ps.sesiones_incluidas,
+                  'duracion_minutos', s.duracion_minutos,
+                  'categoria', c.nombre,
+                  'area', a.nombre
+                ) ORDER BY a.nombre, c.nombre, s.nombre)
+                FROM paquetes_servicios ps
+                JOIN servicios s ON s.id_servicio = ps.id_servicio
+                JOIN categorias_servicio c ON c.id_categoria = s.id_categoria
+                JOIN areas a ON a.id_area = c.id_area
+                WHERE ps.id_paquete = p.id_paquete
+              ), '[]'::jsonb) AS servicios,
+              (SELECT COUNT(*)::int FROM adquisiciones ad
+               WHERE ad.id_paquete = p.id_paquete) AS adquisiciones
+       FROM paquetes p
+       ${where}
+       ORDER BY p.estado ASC, p.nombre ASC
+       LIMIT ${limitParameter} OFFSET ${offsetParameter}`,
+      values,
+    )) as unknown[];
+    return { data, total: Number(count?.total ?? 0), page, limit };
+  }
+  async opcionesPaquetes() {
+    const services = await this.db.manager.query(`
+      SELECT s.id_servicio, s.nombre, s.descripcion, s.duracion_minutos,
+             s.requiere_valoracion, c.nombre AS categoria, a.nombre AS area
+      FROM servicios s
+      JOIN categorias_servicio c ON c.id_categoria = s.id_categoria
+      JOIN areas a ON a.id_area = c.id_area
+      WHERE s.estado = 'ACTIVO' AND c.estado = 'ACTIVO' AND a.estado = 'ACTIVO'
+      ORDER BY a.nombre, c.nombre, s.nombre
+    `);
+    return { services };
   }
   getPaquete(id: number) {
     return this.paquetes.one(id);
@@ -74,6 +139,47 @@ export class PaquetesPromocionesService {
       order: { id_servicio: 'ASC' },
     });
   }
+  async assignPaqueteServices(
+    id: number,
+    services: AsignarServicioPaqueteDto[],
+  ) {
+    return this.db.transaction(async (manager) => {
+      await this.paquetes.one(id, manager);
+      const repository = manager.getRepository(PaqueteServicio);
+      const seen = new Set<number>();
+      for (const service of services) {
+        if (seen.has(service.id_servicio))
+          throw new BadRequestException(
+            'No se puede repetir un servicio dentro del paquete',
+          );
+        seen.add(service.id_servicio);
+        const active = (await manager.query(
+          `SELECT 1 FROM servicios s
+           JOIN categorias_servicio c ON c.id_categoria = s.id_categoria
+           JOIN areas a ON a.id_area = c.id_area
+           WHERE s.id_servicio = $1 AND s.estado = 'ACTIVO'
+             AND c.estado = 'ACTIVO' AND a.estado = 'ACTIVO'`,
+          [service.id_servicio],
+        )) as unknown[];
+        if (!active.length)
+          throw new NotFoundException('Servicio no encontrado');
+        const current = await repository.findOneBy({
+          id_paquete: id,
+          id_servicio: service.id_servicio,
+        });
+        await repository.save(
+          repository.create(
+            Object.assign({}, current, service, { id_paquete: id }),
+          ),
+        );
+      }
+      return repository.find({
+        where: { id_paquete: id },
+        relations: { servicio: true },
+        order: { id_servicio: 'ASC' },
+      });
+    });
+  }
 
   createPromocion(dto: CreatePromocionDto) {
     this.ensureDates(dto.fecha_inicio, dto.fecha_fin);
@@ -85,8 +191,65 @@ export class PaquetesPromocionesService {
       }),
     );
   }
-  listPromociones(query: DomainQueryDto) {
-    return this.promociones.list(query);
+  async listPromociones(query: DomainQueryDto) {
+    const { page, limit, estado, search } = query;
+    const conditions: string[] = [];
+    const values: unknown[] = [];
+    const parameter = (value: unknown) => {
+      values.push(value);
+      return `$${values.length}`;
+    };
+    if (estado)
+      conditions.push(`p.estado::text = ${parameter(estado.toUpperCase())}`);
+    if (search) {
+      const value = parameter(`%${search}%`);
+      conditions.push(`(
+        p.nombre ILIKE ${value}
+        OR COALESCE(p.descripcion, '') ILIKE ${value}
+        OR EXISTS (
+          SELECT 1 FROM promociones_servicios ps
+          JOIN servicios s ON s.id_servicio = ps.id_servicio
+          WHERE ps.id_promocion = p.id_promocion AND s.nombre ILIKE ${value}
+        )
+      )`);
+    }
+    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+    const [count] = (await this.db.manager.query(
+      `SELECT COUNT(*)::int AS total FROM promociones p ${where}`,
+      values,
+    )) as Array<{ total: number }>;
+    const limitParameter = parameter(limit);
+    const offsetParameter = parameter((page - 1) * limit);
+    const data = (await this.db.manager.query(
+      `SELECT p.id_promocion, p.nombre, p.descripcion, p.tipo_descuento,
+              p.valor_descuento, p.fecha_inicio, p.fecha_fin, p.estado,
+              COALESCE((
+                SELECT jsonb_agg(jsonb_build_object(
+                  'id_servicio', ps.id_servicio,
+                  'servicio', s.nombre,
+                  'sesiones_incluidas', ps.sesiones_incluidas,
+                  'duracion_minutos', s.duracion_minutos,
+                  'categoria', c.nombre,
+                  'area', a.nombre
+                ) ORDER BY a.nombre, c.nombre, s.nombre)
+                FROM promociones_servicios ps
+                JOIN servicios s ON s.id_servicio = ps.id_servicio
+                JOIN categorias_servicio c ON c.id_categoria = s.id_categoria
+                JOIN areas a ON a.id_area = c.id_area
+                WHERE ps.id_promocion = p.id_promocion
+              ), '[]'::jsonb) AS servicios,
+              (SELECT COUNT(*)::int FROM adquisiciones ad
+               WHERE ad.id_promocion = p.id_promocion) AS adquisiciones
+       FROM promociones p
+       ${where}
+       ORDER BY p.fecha_inicio DESC, p.id_promocion DESC
+       LIMIT ${limitParameter} OFFSET ${offsetParameter}`,
+      values,
+    )) as unknown[];
+    return { data, total: Number(count?.total ?? 0), page, limit };
+  }
+  async opcionesPromociones() {
+    return this.opcionesPaquetes();
   }
   getPromocion(id: number) {
     return this.promociones.one(id);
@@ -146,6 +309,55 @@ export class PaquetesPromocionesService {
       where: { id_promocion: id },
       relations: { servicio: true },
       order: { id_servicio: 'ASC' },
+    });
+  }
+  async assignPromocionServices(
+    id: number,
+    services: AsignarServicioPromocionDto[],
+  ) {
+    return this.db.transaction(async (manager) => {
+      const promotion = await this.promociones.one(id, manager);
+      if (
+        [EstadoPromocion.FINALIZADA, EstadoPromocion.CANCELADA].includes(
+          promotion.estado,
+        )
+      )
+        throw new BadRequestException(
+          'Una promocion finalizada o cancelada no puede modificarse',
+        );
+      const repository = manager.getRepository(PromocionServicio);
+      const seen = new Set<number>();
+      for (const service of services) {
+        if (seen.has(service.id_servicio))
+          throw new BadRequestException(
+            'No se puede repetir un servicio dentro de la promocion',
+          );
+        seen.add(service.id_servicio);
+        const active = (await manager.query(
+          `SELECT 1 FROM servicios s
+           JOIN categorias_servicio c ON c.id_categoria = s.id_categoria
+           JOIN areas a ON a.id_area = c.id_area
+           WHERE s.id_servicio = $1 AND s.estado = 'ACTIVO'
+             AND c.estado = 'ACTIVO' AND a.estado = 'ACTIVO'`,
+          [service.id_servicio],
+        )) as unknown[];
+        if (!active.length)
+          throw new NotFoundException('Servicio no encontrado');
+        const current = await repository.findOneBy({
+          id_promocion: id,
+          id_servicio: service.id_servicio,
+        });
+        await repository.save(
+          repository.create(
+            Object.assign({}, current, service, { id_promocion: id }),
+          ),
+        );
+      }
+      return repository.find({
+        where: { id_promocion: id },
+        relations: { servicio: true },
+        order: { id_servicio: 'ASC' },
+      });
     });
   }
   private ensureDates(start: string | Date, end: string | Date) {

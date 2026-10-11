@@ -7,6 +7,7 @@ import {
   ParseIntPipe,
   Patch,
   Post,
+  Put,
   Query,
 } from '@nestjs/common';
 import {
@@ -22,6 +23,8 @@ import { Permissions } from '../../common/decorators/permissions.decorator.js';
 import {
   AsignarServicioPaqueteDto,
   AsignarServicioPromocionDto,
+  AsignarServiciosPaqueteDto,
+  AsignarServiciosPromocionDto,
   CreatePaqueteDto,
   CreatePromocionDto,
   UpdatePaqueteDto,
@@ -51,6 +54,12 @@ export class PaquetesPromocionesController {
   @ApiOperation({ summary: 'Listar paquetes con paginación y filtros' })
   listPackages(@Query() query: DomainQueryDto) {
     return this.service.listPaquetes(query);
+  }
+  @Get('paquetes-opciones')
+  @Permissions('comercial.leer')
+  @ApiOperation({ summary: 'Listar servicios disponibles para paquetes' })
+  packageOptions() {
+    return this.service.opcionesPaquetes();
   }
   @Get('paquetes/:id')
   @Permissions('comercial.leer')
@@ -82,6 +91,15 @@ export class PaquetesPromocionesController {
   listPackageServices(@Param('id', ParseIntPipe) id: number) {
     return this.service.listPaqueteServices(id);
   }
+  @Put('paquetes/:id/servicios')
+  @Permissions('comercial.actualizar')
+  @ApiOperation({ summary: 'Asignar varios servicios a un paquete' })
+  assignPackageServices(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: AsignarServiciosPaqueteDto,
+  ) {
+    return this.service.assignPaqueteServices(id, dto.servicios);
+  }
   @Post('promociones')
   @Permissions('comercial.crear')
   @ApiOperation({ summary: 'Crear una promoción en estado PROGRAMADA' })
@@ -94,6 +112,12 @@ export class PaquetesPromocionesController {
   @ApiOperation({ summary: 'Listar promociones con paginación y filtros' })
   listPromotions(@Query() query: DomainQueryDto) {
     return this.service.listPromociones(query);
+  }
+  @Get('promociones-opciones')
+  @Permissions('comercial.leer')
+  @ApiOperation({ summary: 'Listar servicios disponibles para promociones' })
+  promotionOptions() {
+    return this.service.opcionesPromociones();
   }
   @Get('promociones/:id')
   @Permissions('comercial.leer')
@@ -124,5 +148,14 @@ export class PaquetesPromocionesController {
   @ApiOperation({ summary: 'Listar los servicios incluidos en una promoción' })
   listPromotionServices(@Param('id', ParseIntPipe) id: number) {
     return this.service.listPromocionServices(id);
+  }
+  @Put('promociones/:id/servicios')
+  @Permissions('comercial.actualizar')
+  @ApiOperation({ summary: 'Asignar varios servicios a una promoción' })
+  assignPromotionServices(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: AsignarServiciosPromocionDto,
+  ) {
+    return this.service.assignPromocionServices(id, dto.servicios);
   }
 }

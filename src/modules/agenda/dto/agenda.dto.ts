@@ -21,6 +21,9 @@ import { DomainQueryDto } from '../../../common/dto/domain-query.dto.js';
 export class AgendaQueryDto extends DomainQueryDto {
   @IsOptional() @IsEnum(EstadoCita) declare estado?: EstadoCita;
 }
+export class NotificationQueryDto extends DomainQueryDto {
+  @IsOptional() @IsEnum(EstadoNotificacion) declare estado?: EstadoNotificacion;
+}
 
 export class CreateCitaDto {
   @Type(() => Number) @IsInt() @Min(1) id_paciente: number;

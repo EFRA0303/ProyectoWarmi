@@ -52,8 +52,34 @@ export class InventarioService {
   createProducto(d: CreateProductoDto) {
     return this.productos.create(d);
   }
-  listProductos(q: DomainQueryDto) {
-    return this.productos.list(q);
+  async listProductos(q: DomainQueryDto) {
+    const { where, values, parameter } = this.inventoryFilters(q, 'p', [
+      'p.nombre',
+      "COALESCE(p.descripcion, '')",
+      'p.unidad_medida',
+    ]);
+    const [count] = (await this.db.manager.query(
+      `SELECT COUNT(*)::int AS total FROM productos p ${where}`,
+      values,
+    )) as Array<{ total: number }>;
+    const limit = parameter(q.limit);
+    const offset = parameter((q.page - 1) * q.limit);
+    const data = await this.db.manager.query(
+      `SELECT p.*,
+              COUNT(DISTINCT l.id_lote)::int AS lotes,
+              COALESCE(SUM(CASE
+                WHEN m.tipo IN ('CONSUMO_SESION','VENTA','AJUSTE_SALIDA','MERMA','VENCIMIENTO') THEN -m.cantidad
+                ELSE m.cantidad END), 0)::numeric(12,2) AS stock_actual
+       FROM productos p
+       LEFT JOIN lotes_producto l ON l.id_producto = p.id_producto
+       LEFT JOIN movimientos_inventario m ON m.id_lote = l.id_lote
+       ${where}
+       GROUP BY p.id_producto
+       ORDER BY p.estado ASC, p.nombre ASC
+       LIMIT ${limit} OFFSET ${offset}`,
+      values,
+    );
+    return { data, total: Number(count?.total ?? 0), page: q.page, limit: q.limit };
   }
   oneProducto(id: number) {
     return this.productos.one(id);
@@ -81,8 +107,38 @@ export class InventarioService {
       return lot;
     });
   }
-  listLotes(q: DomainQueryDto) {
-    return this.lotes.list(q);
+  async listLotes(q: DomainQueryDto) {
+    const conditions: string[] = [];
+    const values: unknown[] = [];
+    const parameter = (value: unknown) => { values.push(value); return `$${values.length}`; };
+    if (q.estado) conditions.push(`l.estado::text = ${parameter(q.estado.toUpperCase())}`);
+    if (q.id_producto) conditions.push(`l.id_producto = ${parameter(q.id_producto)}`);
+    if (q.search) {
+      const value = parameter(`%${q.search}%`);
+      conditions.push(`(p.nombre ILIKE ${value} OR COALESCE(l.numero_lote, '') ILIKE ${value})`);
+    }
+    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+    const [count] = (await this.db.manager.query(
+      `SELECT COUNT(*)::int AS total FROM lotes_producto l JOIN productos p ON p.id_producto = l.id_producto ${where}`,
+      values,
+    )) as Array<{ total: number }>;
+    const limit = parameter(q.limit);
+    const offset = parameter((q.page - 1) * q.limit);
+    const data = await this.db.manager.query(
+      `SELECT l.*, p.nombre AS producto, p.unidad_medida,
+              COALESCE(SUM(CASE
+                WHEN m.tipo IN ('CONSUMO_SESION','VENTA','AJUSTE_SALIDA','MERMA','VENCIMIENTO') THEN -m.cantidad
+                ELSE m.cantidad END), 0)::numeric(12,2) AS stock_actual
+       FROM lotes_producto l
+       JOIN productos p ON p.id_producto = l.id_producto
+       LEFT JOIN movimientos_inventario m ON m.id_lote = l.id_lote
+       ${where}
+       GROUP BY l.id_lote, p.id_producto
+       ORDER BY l.fecha_ingreso DESC, l.id_lote DESC
+       LIMIT ${limit} OFFSET ${offset}`,
+      values,
+    );
+    return { data, total: Number(count?.total ?? 0), page: q.page, limit: q.limit };
   }
   oneLote(id: number) {
     return this.lotes.one(id);
@@ -144,8 +200,41 @@ export class InventarioService {
       return movement;
     });
   }
-  listMovements(q: DomainQueryDto) {
-    return this.movimientos.list(q);
+  async listMovements(q: DomainQueryDto) {
+    const conditions: string[] = [];
+    const values: unknown[] = [];
+    const parameter = (value: unknown) => { values.push(value); return `$${values.length}`; };
+    if (q.tipo) conditions.push(`m.tipo::text = ${parameter(q.tipo.toUpperCase())}`);
+    if (q.id_producto) conditions.push(`l.id_producto = ${parameter(q.id_producto)}`);
+    if (q.id_lote) conditions.push(`m.id_lote = ${parameter(q.id_lote)}`);
+    if (q.desde) conditions.push(`m.fecha_movimiento >= ${parameter(q.desde)}`);
+    if (q.hasta) conditions.push(`m.fecha_movimiento <= ${parameter(q.hasta)}`);
+    if (q.search) {
+      const value = parameter(`%${q.search}%`);
+      conditions.push(`(p.nombre ILIKE ${value} OR COALESCE(l.numero_lote, '') ILIKE ${value} OR COALESCE(m.observaciones, '') ILIKE ${value})`);
+    }
+    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+    const [count] = (await this.db.manager.query(
+      `SELECT COUNT(*)::int AS total FROM movimientos_inventario m JOIN lotes_producto l ON l.id_lote = m.id_lote JOIN productos p ON p.id_producto = l.id_producto ${where}`,
+      values,
+    )) as Array<{ total: number }>;
+    const limit = parameter(q.limit);
+    const offset = parameter((q.page - 1) * q.limit);
+    const data = await this.db.manager.query(
+      `SELECT m.*, l.numero_lote, l.id_producto, p.nombre AS producto,
+              p.unidad_medida,
+              pe.nombre || ' ' || pe.ap_paterno AS registrado_por_nombre
+       FROM movimientos_inventario m
+       JOIN lotes_producto l ON l.id_lote = m.id_lote
+       JOIN productos p ON p.id_producto = l.id_producto
+       JOIN usuarios u ON u.id_usuario = m.registrado_por
+       JOIN personas pe ON pe.id_persona = u.id_persona
+       ${where}
+       ORDER BY m.fecha_movimiento DESC, m.id_movimiento DESC
+       LIMIT ${limit} OFFSET ${offset}`,
+      values,
+    );
+    return { data, total: Number(count?.total ?? 0), page: q.page, limit: q.limit };
   }
   oneMovement(id: number) {
     return this.movimientos.one(id);
@@ -192,14 +281,8 @@ export class InventarioService {
       return consumption;
     });
   }
-  listConsumptions(q: DomainQueryDto) {
-    const r = new DomainResourceService(
-      ConsumoSesion,
-      'id_consumo',
-      this.db.getRepository(ConsumoSesion),
-      'Consumo',
-    );
-    return r.list(q);
+  async listConsumptions(q: DomainQueryDto) {
+    return this.operationList(q, 'consumos_sesion', 'id_consumo', `JOIN sesiones s ON s.id_sesion = x.id_sesion JOIN tratamientos_paciente t ON t.id_tratamiento = s.id_tratamiento JOIN servicios sv ON sv.id_servicio = t.id_servicio`, `x.id_sesion, sv.nombre AS referencia`);
   }
   createSaleOutput(d: CreateSalidaVentaDto, actor: number) {
     return this.db.transaction(async (m) => {
@@ -243,19 +326,64 @@ export class InventarioService {
       return output;
     });
   }
-  listSaleOutputs(q: DomainQueryDto) {
-    const r = new DomainResourceService(
-      SalidaProductoVenta,
-      'id_salida',
-      this.db.getRepository(SalidaProductoVenta),
-      'Salida',
-    );
-    return r.list(q);
+  async listSaleOutputs(q: DomainQueryDto) {
+    return this.operationList(q, 'salidas_producto_venta', 'id_salida', `JOIN detalles_nota_venta d ON d.id_detalle = x.id_detalle JOIN notas_venta n ON n.id_nota_venta = d.id_nota_venta`, `x.id_detalle, n.numero_nota AS referencia`);
   }
   async stock(id: number) {
     await this.lotes.one(id);
     const total = await this.currentStock(this.db.manager, id);
     return { id_lote: id, stock: total.toFixed(2) };
+  }
+  async options() {
+    const products = await this.db.manager.query(
+      `SELECT id_producto, nombre, unidad_medida, es_insumo, es_vendible
+       FROM productos WHERE estado = 'ACTIVO' ORDER BY nombre`,
+    );
+    const lots = await this.db.manager.query(
+      `SELECT l.id_lote, l.id_producto, l.numero_lote, l.fecha_vencimiento,
+              l.estado, p.nombre AS producto, p.unidad_medida,
+              COALESCE(SUM(CASE
+                WHEN m.tipo IN ('CONSUMO_SESION','VENTA','AJUSTE_SALIDA','MERMA','VENCIMIENTO') THEN -m.cantidad
+                ELSE m.cantidad END), 0)::numeric(12,2) AS stock_actual
+       FROM lotes_producto l
+       JOIN productos p ON p.id_producto = l.id_producto
+       LEFT JOIN movimientos_inventario m ON m.id_lote = l.id_lote
+       GROUP BY l.id_lote, p.id_producto
+       ORDER BY p.nombre, l.fecha_ingreso DESC`,
+    );
+    return { products, lots };
+  }
+  async operationOptions() {
+    const [sessions, saleDetails, lots] = await Promise.all([
+      this.db.manager.query(`SELECT s.id_sesion, s.fecha_sesion, sv.nombre AS servicio, pe.nombre || ' ' || pe.ap_paterno AS paciente FROM sesiones s JOIN tratamientos_paciente t ON t.id_tratamiento = s.id_tratamiento JOIN servicios sv ON sv.id_servicio = t.id_servicio JOIN historiales h ON h.id_historial = t.id_historial JOIN pacientes pa ON pa.id_paciente = h.id_paciente JOIN personas pe ON pe.id_persona = pa.id_persona WHERE s.estado IN ('EN_CURSO','FINALIZADA') ORDER BY s.fecha_sesion DESC`),
+      this.db.manager.query(`SELECT d.id_detalle, d.id_producto, d.descripcion_snapshot AS producto, d.cantidad, n.numero_nota, COALESCE(SUM(spv.cantidad),0)::numeric(10,2) AS cantidad_salida, (d.cantidad-COALESCE(SUM(spv.cantidad),0))::numeric(10,2) AS pendiente FROM detalles_nota_venta d JOIN notas_venta n ON n.id_nota_venta = d.id_nota_venta LEFT JOIN salidas_producto_venta spv ON spv.id_detalle = d.id_detalle WHERE d.id_producto IS NOT NULL AND n.estado = 'EMITIDA' GROUP BY d.id_detalle,n.id_nota_venta HAVING d.cantidad-COALESCE(SUM(spv.cantidad),0)>0 ORDER BY n.fecha_emision DESC`),
+      this.options().then((value) => value.lots),
+    ]);
+    return { sessions, saleDetails, lots };
+  }
+  private async operationList(q: DomainQueryDto, table: string, key: string, joins: string, extra: string) {
+    const values: unknown[] = []; const conditions: string[] = []; const parameter = (value: unknown) => { values.push(value); return `$${values.length}`; };
+    if (q.search) { const value = parameter(`%${q.search}%`); conditions.push(`(p.nombre ILIKE ${value} OR COALESCE(l.numero_lote,'') ILIKE ${value})`); }
+    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+    const [count] = (await this.db.manager.query(`SELECT COUNT(*)::int AS total FROM ${table} x JOIN lotes_producto l ON l.id_lote=x.id_lote JOIN productos p ON p.id_producto=l.id_producto ${joins} ${where}`, values)) as Array<{total:number}>;
+    const limit=parameter(q.limit), offset=parameter((q.page-1)*q.limit);
+    const data=await this.db.manager.query(`SELECT x.*, ${extra}, p.nombre AS producto, p.unidad_medida, l.numero_lote, m.fecha_movimiento, m.observaciones FROM ${table} x JOIN lotes_producto l ON l.id_lote=x.id_lote JOIN productos p ON p.id_producto=l.id_producto JOIN movimientos_inventario m ON m.id_movimiento=x.id_movimiento ${joins} ${where} ORDER BY m.fecha_movimiento DESC LIMIT ${limit} OFFSET ${offset}`,values);
+    return {data,total:Number(count?.total??0),page:q.page,limit:q.limit,key};
+  }
+  private inventoryFilters(
+    q: DomainQueryDto,
+    alias: string,
+    searchColumns: string[],
+  ) {
+    const conditions: string[] = [];
+    const values: unknown[] = [];
+    const parameter = (value: unknown) => { values.push(value); return `$${values.length}`; };
+    if (q.estado) conditions.push(`${alias}.estado::text = ${parameter(q.estado.toUpperCase())}`);
+    if (q.search) {
+      const value = parameter(`%${q.search}%`);
+      conditions.push(`(${searchColumns.map((column) => `${column} ILIKE ${value}`).join(' OR ')})`);
+    }
+    return { where: conditions.length ? `WHERE ${conditions.join(' AND ')}` : '', values, parameter };
   }
   private async ensureStock(
     manager: EntityManager,

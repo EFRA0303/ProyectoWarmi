@@ -122,8 +122,23 @@ export class AdquisicionesService {
       });
     });
   }
-  list(query: DomainQueryDto) {
-    return this.resource.list(query);
+  async list(query: DomainQueryDto) {
+    const conditions: string[] = [];
+    const values: unknown[] = [];
+    const parameter = (value: unknown) => { values.push(value); return `$${values.length}`; };
+    if (query.estado) conditions.push(`a.estado::text = ${parameter(query.estado.toUpperCase())}`);
+    if (query.id_paciente) conditions.push(`a.id_paciente = ${parameter(query.id_paciente)}`);
+    if (query.search) { const value = parameter(`%${query.search}%`); conditions.push(`(pe.nombre ILIKE ${value} OR pe.ap_paterno ILIKE ${value} OR COALESCE(pe.ci, '') ILIKE ${value} OR COALESCE(pq.nombre, pr.nombre, '') ILIKE ${value})`); }
+    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+    const [count] = (await this.db.manager.query(`SELECT COUNT(*)::int AS total FROM adquisiciones a JOIN pacientes pa ON pa.id_paciente = a.id_paciente JOIN personas pe ON pe.id_persona = pa.id_persona LEFT JOIN paquetes pq ON pq.id_paquete = a.id_paquete LEFT JOIN promociones pr ON pr.id_promocion = a.id_promocion ${where}`, values)) as Array<{ total: number }>;
+    const limit = parameter(query.limit); const offset = parameter((query.page - 1) * query.limit);
+    const data = await this.db.manager.query(`SELECT a.*, pe.nombre || ' ' || pe.ap_paterno || ' ' || pe.ap_materno AS paciente, pe.ci, COALESCE(pq.nombre, pr.nombre, 'Adquisición directa') AS origen,
+      COALESCE((SELECT SUM(d.sesiones_incluidas) FROM detalles_adquisicion d WHERE d.id_adquisicion = a.id_adquisicion),0)::int AS sesiones_incluidas,
+      COALESCE((SELECT SUM(t.sesiones_iniciales) FROM detalles_adquisicion d JOIN tratamientos_paciente t ON t.id_detalle_adquisicion = d.id_detalle_adquisicion WHERE d.id_adquisicion = a.id_adquisicion),0)::int AS sesiones_asignadas,
+      COALESCE((SELECT COUNT(*) FROM detalles_adquisicion d JOIN tratamientos_paciente t ON t.id_detalle_adquisicion = d.id_detalle_adquisicion JOIN sesiones s ON s.id_tratamiento = t.id_tratamiento WHERE d.id_adquisicion = a.id_adquisicion AND s.estado = 'FINALIZADA'),0)::int AS sesiones_realizadas,
+      COALESCE((SELECT jsonb_agg(jsonb_build_object('id_detalle_adquisicion',d.id_detalle_adquisicion,'id_servicio',d.id_servicio,'servicio',d.nombre_servicio_snapshot,'sesiones_incluidas',d.sesiones_incluidas,'precio_unitario',d.precio_unitario,'subtotal',d.subtotal) ORDER BY d.id_detalle_adquisicion) FROM detalles_adquisicion d WHERE d.id_adquisicion = a.id_adquisicion),'[]'::jsonb) AS detalles
+      FROM adquisiciones a JOIN pacientes pa ON pa.id_paciente = a.id_paciente JOIN personas pe ON pe.id_persona = pa.id_persona LEFT JOIN paquetes pq ON pq.id_paquete = a.id_paquete LEFT JOIN promociones pr ON pr.id_promocion = a.id_promocion ${where} ORDER BY a.fecha_adquisicion DESC, a.id_adquisicion DESC LIMIT ${limit} OFFSET ${offset}`, values);
+    return { data, total: Number(count?.total ?? 0), page: query.page, limit: query.limit };
   }
   async one(id: number) {
     await this.resource.one(id);
@@ -150,6 +165,14 @@ export class AdquisicionesService {
       where: { id_adquisicion: id },
       order: { id_detalle_adquisicion: 'ASC' },
     });
+  }
+  async options() {
+    const [patients, packages, promotions] = await Promise.all([
+      this.db.manager.query(`SELECT pa.id_paciente, pe.nombre, pe.ap_paterno, pe.ap_materno, pe.ci FROM pacientes pa JOIN personas pe ON pe.id_persona = pa.id_persona WHERE pa.estado = 'ACTIVO' ORDER BY pe.ap_paterno, pe.nombre`),
+      this.db.manager.query(`SELECT p.id_paquete AS id, p.nombre, p.precio, 'PAQUETE' AS tipo, COALESCE(jsonb_agg(jsonb_build_object('id_servicio',ps.id_servicio,'servicio',s.nombre,'sesiones_incluidas',ps.sesiones_incluidas) ORDER BY s.nombre) FILTER (WHERE ps.id_servicio IS NOT NULL),'[]'::jsonb) AS servicios FROM paquetes p LEFT JOIN paquetes_servicios ps ON ps.id_paquete = p.id_paquete LEFT JOIN servicios s ON s.id_servicio = ps.id_servicio WHERE p.estado = 'ACTIVO' GROUP BY p.id_paquete ORDER BY p.nombre`),
+      this.db.manager.query(`SELECT p.id_promocion AS id, p.nombre, p.tipo_descuento, p.valor_descuento, 'PROMOCION' AS tipo, COALESCE(jsonb_agg(jsonb_build_object('id_servicio',ps.id_servicio,'servicio',s.nombre,'sesiones_incluidas',ps.sesiones_incluidas) ORDER BY s.nombre) FILTER (WHERE ps.id_servicio IS NOT NULL),'[]'::jsonb) AS servicios FROM promociones p LEFT JOIN promociones_servicios ps ON ps.id_promocion = p.id_promocion LEFT JOIN servicios s ON s.id_servicio = ps.id_servicio WHERE p.estado = 'ACTIVA' AND p.fecha_inicio <= now() AND p.fecha_fin >= now() GROUP BY p.id_promocion ORDER BY p.nombre`),
+    ]);
+    return { patients, offers: [...packages, ...promotions] };
   }
   private validate(dto: Partial<CreateAdquisicionDto>) {
     if (dto.id_paquete && dto.id_promocion)

@@ -4,7 +4,6 @@ import {
   Entity,
   JoinColumn,
   ManyToOne,
-  OneToOne,
   PrimaryColumn,
   PrimaryGeneratedColumn,
 } from 'typeorm';
@@ -14,6 +13,7 @@ import {
 } from '../../../common/entities/timestamps.entity.js';
 import {
   EstadoSolicitud,
+  EstadoSesion,
   EstadoTratamiento,
   TipoValoracion,
 } from '../../../common/enums/domain.enums.js';
@@ -96,15 +96,22 @@ export class AmpliacionTratamiento extends CreatedEntity {
 export class Sesion extends TimestampedEntity {
   @PrimaryGeneratedColumn({ type: 'integer' }) id_sesion: number;
   @Column({ type: 'integer' }) id_tratamiento: number;
-  @Column({ type: 'integer', nullable: true, unique: true }) id_cita:
-    number | null;
+  @Column({ type: 'integer', nullable: true }) id_cita: number | null;
   @Column({ type: 'integer' }) atendido_por: number;
   @Column({ type: 'timestamptz' }) fecha_sesion: Date;
+  @Column({ type: 'timestamptz', nullable: true }) finalizada_en: Date | null;
+  @Column({
+    type: 'enum',
+    enum: EstadoSesion,
+    enumName: 'estado_sesion',
+    default: EstadoSesion.EN_CURSO,
+  })
+  estado: EstadoSesion;
   @Column({ type: 'text', nullable: true }) observaciones: string | null;
   @ManyToOne('TratamientoPaciente', { nullable: false, onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'id_tratamiento' })
   tratamiento: object;
-  @OneToOne('Cita', { nullable: true, onDelete: 'RESTRICT' })
+  @ManyToOne('Cita', { nullable: true, onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'id_cita' })
   cita: object | null;
   @ManyToOne('Personal', { nullable: false, onDelete: 'RESTRICT' })

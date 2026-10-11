@@ -1,5 +1,7 @@
 import { Type } from 'class-transformer';
 import {
+  ArrayMinSize,
+  IsArray,
   IsDateString,
   IsEnum,
   IsInt,
@@ -8,6 +10,7 @@ import {
   IsString,
   MaxLength,
   Min,
+  ValidateNested,
 } from 'class-validator';
 import {
   EstadoSolicitud,
@@ -76,4 +79,11 @@ export class UpdateValoracionDto {
 export class RegistrarMedidaDto {
   @Type(() => Number) @IsInt() @Min(1) id_tipo_medida: number;
   @IsNumberString() valor: string;
+}
+export class RegistrarMedidasDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ValidateNested({ each: true })
+  @Type(() => RegistrarMedidaDto)
+  medidas: RegistrarMedidaDto[];
 }
