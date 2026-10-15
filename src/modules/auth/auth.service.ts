@@ -3,6 +3,7 @@ import {
   Injectable,
   Inject,
   Logger,
+  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { createHash, randomBytes } from 'node:crypto';
@@ -25,6 +26,7 @@ import { PersonasService } from '../personas/personas.service.js';
 import type { UpdatePersonaDto } from '../personas/dto/update-persona.dto.js';
 import { optimizeProfilePhoto } from '../../common/utils/profile-photo.js';
 import {
+  readProfilePhoto,
   removeProfilePhoto,
   writeProfilePhoto,
 } from '../../common/utils/profile-photo-storage.js';
@@ -393,6 +395,22 @@ export class AuthService {
       alto: photo.height,
       bytes: photo.size,
     };
+  }
+
+  async getOwnProfilePhoto(id: number) {
+    const user = await this.db.getRepository(Usuario).findOneBy({
+      id_usuario: id,
+    });
+    if (!user?.foto_perfil_ruta)
+      throw new NotFoundException('El usuario no tiene una foto de perfil');
+    try {
+      return {
+        data: await readProfilePhoto(user.foto_perfil_ruta),
+        mime: 'image/webp' as const,
+      };
+    } catch {
+      throw new NotFoundException('No se encontró la foto de perfil');
+    }
   }
   async changePassword(
     id: number,

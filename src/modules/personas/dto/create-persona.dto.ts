@@ -5,10 +5,12 @@ import {
   IsOptional,
   IsDateString,
   IsEnum,
+  IsPhoneNumber,
 } from 'class-validator';
 import { Genero } from '../../../common/enums/genero.enum.js';
 import { Transform } from 'class-transformer';
 import { normalizePersonName } from '../../../common/utils/person-name.js';
+import { normalizePhoneNumber } from '../../../common/utils/phone-number.js';
 export class CreatePersonaDto {
   @Transform(({ value }) =>
     typeof value === 'string' ? normalizePersonName(value) : value,
@@ -47,13 +49,21 @@ export class CreatePersonaDto {
   genero: Genero;
 
   @IsNotEmpty()
+  @Transform(({ value }) => normalizePhoneNumber(value))
   @IsString()
-  @MaxLength(30)
+  @IsPhoneNumber(undefined, {
+    message: 'El teléfono principal no es válido para el país seleccionado',
+  })
+  @MaxLength(16)
   telefono1: string;
 
   @IsOptional()
+  @Transform(({ value }) => normalizePhoneNumber(value))
   @IsString()
-  @MaxLength(30)
+  @IsPhoneNumber(undefined, {
+    message: 'El teléfono alternativo no es válido para el país seleccionado',
+  })
+  @MaxLength(16)
   telefono2?: string | null;
 
   @IsOptional()

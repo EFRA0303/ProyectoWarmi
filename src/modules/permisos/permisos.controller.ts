@@ -17,6 +17,7 @@ import { UpdatePermisoDto } from './dto/update-permiso.dto.js';
 import { PaginationDto } from '../../common/dto/pagination.dto.js';
 import { CurrentUser } from '../../common/decorators/current-user.decorator.js';
 import { Permissions } from '../../common/decorators/permissions.decorator.js';
+import { Roles } from '../../common/decorators/roles.decorator.js';
 import type { JwtPayload } from '../../common/interfaces/jwt-payload.interface.js';
 import { BajaDto } from '../../common/dto/baja.dto.js';
 import { AssignUserPermissionDto } from './dto/assign-user-permission.dto.js';
@@ -25,6 +26,7 @@ import { SincronizarPermisosUsuarioDto } from './dto/sincronizar-permisos-usuari
 
 @ApiBearerAuth('access-token')
 @Controller('permisos')
+@Roles('ROOT', 'ADMINISTRADOR')
 export class PermisosController {
   constructor(
     @Inject(PermisosService) private readonly service: PermisosService,

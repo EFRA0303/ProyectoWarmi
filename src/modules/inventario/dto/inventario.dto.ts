@@ -17,9 +17,16 @@ import {
   TipoMovimientoInventario,
 } from '../../../common/enums/domain.enums.js';
 export class CreateProductoDto {
+  @Type(() => Number) @IsInt() @Min(1) id_categoria_producto: number;
   @IsString() @MaxLength(120) nombre: string;
-  @IsOptional() @IsString() @MaxLength(255) descripcion?: string;
+  @IsOptional() @IsString() @MaxLength(100) marca?: string | null;
+  @IsOptional() @IsString() @MaxLength(80) sku?: string | null;
+  @IsOptional() @IsString() @MaxLength(80) codigo_barras?: string | null;
+  @IsOptional() @IsString() @MaxLength(255) descripcion?: string | null;
   @IsString() @MaxLength(30) unidad_medida: string;
+  @IsString() @MaxLength(50) presentacion: string;
+  @IsNumberString() contenido_presentacion: string;
+  @IsOptional() @IsNumberString() precio_venta?: string | null;
   @IsOptional() @IsString() @MaxLength(500) imagen_url?: string;
   @IsOptional() @IsBoolean() es_insumo?: boolean;
   @IsOptional() @IsBoolean() es_vendible?: boolean;

@@ -1,12 +1,14 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Inject,
   Param,
   ParseIntPipe,
   Patch,
   Post,
+  Put,
   Query,
 } from '@nestjs/common';
 import {
@@ -19,6 +21,7 @@ import {
 } from '@nestjs/swagger';
 import { CurrentUser } from '../../common/decorators/current-user.decorator.js';
 import { Permissions } from '../../common/decorators/permissions.decorator.js';
+import { Roles } from '../../common/decorators/roles.decorator.js';
 import type { JwtPayload } from '../../common/interfaces/jwt-payload.interface.js';
 import { CreateBloqueoPersonalDto } from './dto/create-bloqueo-personal.dto.js';
 import { CreateHorarioExtraDto } from './dto/create-horario-extra.dto.js';
@@ -31,6 +34,7 @@ import {
 import { UpdateBloqueoPersonalDto } from './dto/update-bloqueo-personal.dto.js';
 import { UpdateHorarioExtraDto } from './dto/update-horario-extra.dto.js';
 import { UpdateHorarioPersonalDto } from './dto/update-horario-personal.dto.js';
+import { ReplaceHorariosPersonalDto } from './dto/replace-horarios-personal.dto.js';
 import { DisponibilidadService } from './disponibilidad.service.js';
 import { BloqueoPersonal } from './entities/bloqueo-personal.entity.js';
 import { HorarioExtraPersonal } from './entities/horario-extra-personal.entity.js';
@@ -51,6 +55,7 @@ const paginatedSchema = (model: string) => ({
 @ApiBearerAuth('access-token')
 @ApiExtraModels(HorarioPersonal, HorarioExtraPersonal, BloqueoPersonal)
 @Controller('disponibilidad')
+@Roles('ROOT', 'ADMINISTRADOR')
 export class DisponibilidadController {
   constructor(
     @Inject(DisponibilidadService)
@@ -96,6 +101,16 @@ export class DisponibilidadController {
     @Body() dto: UpdateHorarioPersonalDto,
   ) {
     return this.service.updateHorario(id, dto);
+  }
+
+  @Put('horarios/personal/:idPersonal')
+  @Permissions('disponibilidad.actualizar')
+  @ApiOperation({ summary: 'Reemplazar la semana habitual de un empleado' })
+  replaceStaffWeek(
+    @Param('idPersonal', ParseIntPipe) idPersonal: number,
+    @Body() dto: ReplaceHorariosPersonalDto,
+  ) {
+    return this.service.replaceStaffWeek(idPersonal, dto);
   }
 
   @Post('horarios-extra')
@@ -167,5 +182,12 @@ export class DisponibilidadController {
     @Body() dto: UpdateBloqueoPersonalDto,
   ) {
     return this.service.updateBlock(id, dto);
+  }
+
+  @Delete('bloqueos/:id')
+  @Permissions('disponibilidad.actualizar')
+  @ApiOperation({ summary: 'Eliminar un bloqueo de disponibilidad' })
+  removeBlock(@Param('id', ParseIntPipe) id: number) {
+    return this.service.removeBlock(id);
   }
 }

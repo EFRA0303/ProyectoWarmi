@@ -50,7 +50,8 @@ export class AdquisicionesService {
             throw new BadRequestException(
               `El servicio ${item.id_servicio} no existe`,
             );
-          const gross = Number(item.precio_unitario) * item.sesiones_incluidas;
+          const unitPrice = Number(service.precio);
+          const gross = unitPrice * item.sesiones_incluidas;
           const discount = Number(item.descuento ?? 0);
           if (discount > gross)
             throw new BadRequestException(
@@ -58,7 +59,7 @@ export class AdquisicionesService {
             );
           return Object.assign({}, item, {
             nombre_servicio_snapshot: service.nombre,
-            precio_unitario: this.money(Number(item.precio_unitario)),
+            precio_unitario: this.money(unitPrice),
             descuento: this.money(discount),
             subtotal: this.money(gross - discount),
             gross,
@@ -169,8 +170,8 @@ export class AdquisicionesService {
   async options() {
     const [patients, packages, promotions] = await Promise.all([
       this.db.manager.query(`SELECT pa.id_paciente, pe.nombre, pe.ap_paterno, pe.ap_materno, pe.ci FROM pacientes pa JOIN personas pe ON pe.id_persona = pa.id_persona WHERE pa.estado = 'ACTIVO' ORDER BY pe.ap_paterno, pe.nombre`),
-      this.db.manager.query(`SELECT p.id_paquete AS id, p.nombre, p.precio, 'PAQUETE' AS tipo, COALESCE(jsonb_agg(jsonb_build_object('id_servicio',ps.id_servicio,'servicio',s.nombre,'sesiones_incluidas',ps.sesiones_incluidas) ORDER BY s.nombre) FILTER (WHERE ps.id_servicio IS NOT NULL),'[]'::jsonb) AS servicios FROM paquetes p LEFT JOIN paquetes_servicios ps ON ps.id_paquete = p.id_paquete LEFT JOIN servicios s ON s.id_servicio = ps.id_servicio WHERE p.estado = 'ACTIVO' GROUP BY p.id_paquete ORDER BY p.nombre`),
-      this.db.manager.query(`SELECT p.id_promocion AS id, p.nombre, p.tipo_descuento, p.valor_descuento, 'PROMOCION' AS tipo, COALESCE(jsonb_agg(jsonb_build_object('id_servicio',ps.id_servicio,'servicio',s.nombre,'sesiones_incluidas',ps.sesiones_incluidas) ORDER BY s.nombre) FILTER (WHERE ps.id_servicio IS NOT NULL),'[]'::jsonb) AS servicios FROM promociones p LEFT JOIN promociones_servicios ps ON ps.id_promocion = p.id_promocion LEFT JOIN servicios s ON s.id_servicio = ps.id_servicio WHERE p.estado = 'ACTIVA' AND p.fecha_inicio <= now() AND p.fecha_fin >= now() GROUP BY p.id_promocion ORDER BY p.nombre`),
+      this.db.manager.query(`SELECT p.id_paquete AS id, p.nombre, p.precio, 'PAQUETE' AS tipo, COALESCE(jsonb_agg(jsonb_build_object('id_servicio',ps.id_servicio,'servicio',s.nombre,'sesiones_incluidas',ps.sesiones_incluidas,'precio',s.precio) ORDER BY s.nombre) FILTER (WHERE ps.id_servicio IS NOT NULL),'[]'::jsonb) AS servicios FROM paquetes p LEFT JOIN paquetes_servicios ps ON ps.id_paquete = p.id_paquete LEFT JOIN servicios s ON s.id_servicio = ps.id_servicio WHERE p.estado = 'ACTIVO' GROUP BY p.id_paquete ORDER BY p.nombre`),
+      this.db.manager.query(`SELECT p.id_promocion AS id, p.nombre, p.tipo_descuento, p.valor_descuento, 'PROMOCION' AS tipo, COALESCE(jsonb_agg(jsonb_build_object('id_servicio',ps.id_servicio,'servicio',s.nombre,'sesiones_incluidas',ps.sesiones_incluidas,'precio',s.precio) ORDER BY s.nombre) FILTER (WHERE ps.id_servicio IS NOT NULL),'[]'::jsonb) AS servicios FROM promociones p LEFT JOIN promociones_servicios ps ON ps.id_promocion = p.id_promocion LEFT JOIN servicios s ON s.id_servicio = ps.id_servicio WHERE p.estado = 'ACTIVA' AND p.fecha_inicio <= now() AND p.fecha_fin >= now() GROUP BY p.id_promocion ORDER BY p.nombre`),
     ]);
     return { patients, offers: [...packages, ...promotions] };
   }

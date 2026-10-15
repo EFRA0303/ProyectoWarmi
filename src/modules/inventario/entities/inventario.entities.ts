@@ -22,12 +22,26 @@ import {
 
 @Entity('productos')
 @Check('CHK_productos_stock_minimo', '"stock_minimo" >= 0')
+@Check('CHK_productos_contenido_presentacion', '"contenido_presentacion" > 0')
+@Check('CHK_productos_precio_venta', '"precio_venta" IS NULL OR "precio_venta" >= 0')
+@Check('CHK_productos_uso', '"es_insumo" OR "es_vendible"')
 export class Producto extends TimestampedEntity {
   @PrimaryGeneratedColumn({ type: 'integer' }) id_producto: number;
+  @Column({ type: 'integer' }) id_categoria_producto: number;
   @Column({ type: 'varchar', length: 120 }) nombre: string;
+  @Column({ type: 'varchar', length: 100, nullable: true }) marca: string | null;
+  @Column({ type: 'varchar', length: 80, nullable: true }) sku: string | null;
+  @Column({ type: 'varchar', length: 80, nullable: true }) codigo_barras:
+    string | null;
   @Column({ type: 'varchar', length: 255, nullable: true }) descripcion:
     string | null;
   @Column({ type: 'varchar', length: 30 }) unidad_medida: string;
+  @Column({ type: 'varchar', length: 50, default: 'Unidad' })
+  presentacion: string;
+  @Column({ type: 'numeric', precision: 12, scale: 3, default: 1 })
+  contenido_presentacion: string;
+  @Column({ type: 'numeric', precision: 12, scale: 2, nullable: true })
+  precio_venta: string | null;
   @Column({ type: 'varchar', length: 500, nullable: true }) imagen_url:
     string | null;
   @Column({ type: 'boolean', default: true }) es_insumo: boolean;
@@ -41,6 +55,9 @@ export class Producto extends TimestampedEntity {
     default: EstadoGeneral.ACTIVO,
   })
   estado: EstadoGeneral;
+  @ManyToOne('CategoriaProducto', { nullable: false, onDelete: 'RESTRICT' })
+  @JoinColumn({ name: 'id_categoria_producto' })
+  categoria: object;
 }
 
 @Entity('lotes_producto')

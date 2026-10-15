@@ -17,6 +17,10 @@ import type {
   UpdateCategoriaServicioDto,
 } from './dto/categoria-servicio.dto.js';
 import type {
+  CreateCategoriaProductoDto,
+  UpdateCategoriaProductoDto,
+} from './dto/categoria-producto.dto.js';
+import type {
   CreateServicioDto,
   UpdateServicioDto,
 } from './dto/servicio.dto.js';
@@ -27,6 +31,7 @@ import type {
 } from './dto/tipo-medida.dto.js';
 import { Area } from './entities/area.entity.js';
 import { CategoriaServicio } from './entities/categoria-servicio.entity.js';
+import { CategoriaProducto } from './entities/categoria-producto.entity.js';
 import { Servicio } from './entities/servicio.entity.js';
 import { ServicioMedida } from './entities/servicio-medida.entity.js';
 import { TipoMedida } from './entities/tipo-medida.entity.js';
@@ -59,6 +64,40 @@ export class CatalogoService {
   async updateArea(id: number, dto: UpdateAreaDto) {
     const repository = this.db.getRepository(Area);
     const row = await this.findArea(id);
+    return repository.save(repository.merge(row, dto));
+  }
+
+  createProductCategory(dto: CreateCategoriaProductoDto) {
+    const repository = this.db.getRepository(CategoriaProducto);
+    return repository.save(repository.create(dto));
+  }
+
+  async findProductCategories({ page, limit, estado }: CatalogoQueryDto) {
+    const [data, total] = await this.db
+      .getRepository(CategoriaProducto)
+      .findAndCount({
+        where: estado ? { estado } : {},
+        order: { nombre: 'ASC' },
+        skip: (page - 1) * limit,
+        take: limit,
+      });
+    return { data, total, page, limit };
+  }
+
+  async findProductCategory(id: number) {
+    const row = await this.db
+      .getRepository(CategoriaProducto)
+      .findOneBy({ id_categoria_producto: id });
+    if (!row) throw new NotFoundException('Categoría de producto no encontrada');
+    return row;
+  }
+
+  async updateProductCategory(
+    id: number,
+    dto: UpdateCategoriaProductoDto,
+  ) {
+    const repository = this.db.getRepository(CategoriaProducto);
+    const row = await this.findProductCategory(id);
     return repository.save(repository.merge(row, dto));
   }
 

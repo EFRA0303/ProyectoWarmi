@@ -12,6 +12,7 @@ import { Personal } from '../personal/entities/personal.entity.js';
 import type { CreateBloqueoPersonalDto } from './dto/create-bloqueo-personal.dto.js';
 import type { CreateHorarioExtraDto } from './dto/create-horario-extra.dto.js';
 import type { CreateHorarioPersonalDto } from './dto/create-horario-personal.dto.js';
+import type { ReplaceHorariosPersonalDto } from './dto/replace-horarios-personal.dto.js';
 import type {
   BloqueoPersonalQueryDto,
   HorarioExtraQueryDto,
@@ -121,10 +122,58 @@ export class DisponibilidadService {
     });
   }
 
+  async replaceStaffWeek(
+    staffId: number,
+    dto: ReplaceHorariosPersonalDto,
+  ) {
+    return this.db.transaction(async (manager) => {
+      await this.ensureActiveStaff(manager, staffId);
+      const byDay = new Map<string, Array<{ start: string; end: string }>>();
+      for (const range of dto.horarios) {
+        this.validateTimeRange(range.hora_inicio, range.hora_fin);
+        const ranges = byDay.get(range.dia_semana) ?? [];
+        if (
+          ranges.some(
+            (current) =>
+              current.start < range.hora_fin &&
+              current.end > range.hora_inicio,
+          )
+        ) {
+          throw new ConflictException(
+            `Existen horarios superpuestos para ${range.dia_semana.toLowerCase()}`,
+          );
+        }
+        ranges.push({ start: range.hora_inicio, end: range.hora_fin });
+        byDay.set(range.dia_semana, ranges);
+      }
+      const repository = manager.getRepository(HorarioPersonal);
+      await repository.delete({ id_personal: staffId });
+      if (!dto.horarios.length) return [];
+      return repository.save(
+        dto.horarios.map((range) =>
+          repository.create({
+            id_personal: staffId,
+            dia_semana: range.dia_semana,
+            hora_inicio: range.hora_inicio,
+            hora_fin: range.hora_fin,
+            motivo_pausa_anterior: range.motivo_pausa_anterior?.trim() || null,
+            estado: true,
+          }),
+        ),
+      );
+    });
+  }
+
   async createExtra(dto: CreateHorarioExtraDto, actor: number) {
     this.validateTimeRange(dto.hora_inicio, dto.hora_fin);
     return this.db.transaction(async (manager) => {
       await this.ensureActiveStaff(manager, dto.id_personal);
+      await this.ensureExtraWithinBusinessHours(
+        manager,
+        dto.fecha,
+        dto.hora_inicio,
+        dto.hora_fin,
+      );
       await this.ensureExtraAvailable(
         manager,
         dto.id_personal,
@@ -188,6 +237,7 @@ export class DisponibilidadService {
       this.validateTimeRange(start, end);
       if (state === EstadoHorarioExtra.AUTORIZADO) {
         await this.ensureActiveStaff(manager, row.id_personal);
+        await this.ensureExtraWithinBusinessHours(manager, date, start, end);
         await this.ensureExtraAvailable(
           manager,
           row.id_personal,
@@ -281,6 +331,14 @@ export class DisponibilidadService {
     });
   }
 
+  async removeBlock(id: number) {
+    const repository = this.db.getRepository(BloqueoPersonal);
+    const row = await repository.findOneBy({ id_bloqueo: id });
+    if (!row) throw new NotFoundException('Bloqueo no encontrado');
+    await repository.remove(row);
+    return { id_bloqueo: id, eliminado: true };
+  }
+
   private validateTimeRange(start: string, end: string) {
     if (start >= end)
       throw new BadRequestException('hora_inicio debe ser menor que hora_fin');
@@ -349,6 +407,92 @@ export class DisponibilidadService {
     if (await builder.getExists())
       throw new ConflictException(
         'El horario extra se superpone con otro autorizado',
+      );
+  }
+
+  private async ensureExtraWithinBusinessHours(
+    manager: EntityManager,
+    date: string,
+    start: string,
+    end: string,
+  ) {
+    const [config] = (await manager.query(`
+      SELECT id_configuracion_horario
+      FROM configuraciones_horario_atencion
+      ORDER BY id_configuracion_horario ASC
+      LIMIT 1
+    `)) as Array<{ id_configuracion_horario: number }>;
+    const weekday = [
+      'DOMINGO',
+      'LUNES',
+      'MARTES',
+      'MIERCOLES',
+      'JUEVES',
+      'VIERNES',
+      'SABADO',
+    ][new Date(`${date}T12:00:00Z`).getUTCDay()];
+
+    if (!config) {
+      const openByDefault = weekday !== 'DOMINGO' && start >= '07:00' && end <= '20:00';
+      if (!openByDefault)
+        throw new BadRequestException(
+          'El horario extraordinario debe estar dentro del horario de atención del spa',
+        );
+      return;
+    }
+
+    const [exception] = (await manager.query(
+      `SELECT id_excepcion_horario, tipo, motivo
+       FROM excepciones_horario_atencion
+       WHERE id_configuracion_horario = $1 AND fecha = $2::date`,
+      [config.id_configuracion_horario, date],
+    )) as Array<{
+      id_excepcion_horario: number;
+      tipo: 'CERRADO' | 'HORARIO_ESPECIAL';
+      motivo: string | null;
+    }>;
+    if (exception?.tipo === 'CERRADO')
+      throw new BadRequestException(
+        exception.motivo
+          ? `El spa permanecerá cerrado: ${exception.motivo}`
+          : 'El spa permanecerá cerrado en la fecha seleccionada',
+      );
+
+    const [, month, day] = date.split('-').map(Number);
+    const [holiday] = (await manager.query(
+      `SELECT nombre
+       FROM feriados
+       WHERE id_configuracion_horario = $1
+         AND ((tipo = 'DINAMICO' AND fecha = $2::date)
+           OR (tipo = 'FIJO' AND mes = $3 AND dia = $4))
+       LIMIT 1`,
+      [config.id_configuracion_horario, date, month, day],
+    )) as Array<{ nombre: string }>;
+    if (holiday && exception?.tipo !== 'HORARIO_ESPECIAL')
+      throw new BadRequestException(`El spa permanecerá cerrado: ${holiday.nombre}`);
+
+    const ranges = exception?.tipo === 'HORARIO_ESPECIAL'
+      ? ((await manager.query(
+          `SELECT TO_CHAR(hora_inicio, 'HH24:MI') AS hora_inicio,
+                  TO_CHAR(hora_fin, 'HH24:MI') AS hora_fin
+           FROM tramos_excepcion_horario_atencion
+           WHERE id_excepcion_horario = $1
+           ORDER BY hora_inicio`,
+          [exception.id_excepcion_horario],
+        )) as Array<{ hora_inicio: string; hora_fin: string }>)
+      : ((await manager.query(
+          `SELECT TO_CHAR(hora_inicio, 'HH24:MI') AS hora_inicio,
+                  TO_CHAR(hora_fin, 'HH24:MI') AS hora_fin
+           FROM horarios_atencion_semanal
+           WHERE id_configuracion_horario = $1 AND dia_semana = $2
+           ORDER BY hora_inicio`,
+          [config.id_configuracion_horario, weekday],
+        )) as Array<{ hora_inicio: string; hora_fin: string }>);
+    if (!ranges.some((range) => start >= range.hora_inicio && end <= range.hora_fin))
+      throw new BadRequestException(
+        ranges.length
+          ? `El horario extraordinario debe estar dentro de: ${ranges.map((range) => `${range.hora_inicio}–${range.hora_fin}`).join(' o ')}`
+          : 'La fecha seleccionada no tiene horario de atención del spa',
       );
   }
 

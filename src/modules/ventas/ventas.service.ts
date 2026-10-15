@@ -221,7 +221,7 @@ export class VentasService {
       await Promise.all([
         this.db.manager.query(`SELECT pa.id_paciente, pe.nombre, pe.ap_paterno, pe.ap_materno, pe.ci FROM pacientes pa JOIN personas pe ON pe.id_persona = pa.id_persona WHERE pa.estado = 'ACTIVO' ORDER BY pe.ap_paterno, pe.nombre`),
         this.db.manager.query(`SELECT a.id_adquisicion, a.id_paciente, a.total, a.fecha_adquisicion, COALESCE(pq.nombre, pr.nombre, 'Adquisición') AS concepto FROM adquisiciones a LEFT JOIN paquetes pq ON pq.id_paquete = a.id_paquete LEFT JOIN promociones pr ON pr.id_promocion = a.id_promocion LEFT JOIN notas_venta n ON n.id_adquisicion = a.id_adquisicion WHERE a.estado <> 'CANCELADA' AND n.id_nota_venta IS NULL ORDER BY a.fecha_adquisicion DESC`),
-        this.db.manager.query(`SELECT s.id_servicio AS id, s.nombre, 'SERVICIO' AS tipo FROM servicios s JOIN categorias_servicio c ON c.id_categoria = s.id_categoria JOIN areas a ON a.id_area = c.id_area WHERE s.estado = 'ACTIVO' AND c.estado = 'ACTIVO' AND a.estado = 'ACTIVO' ORDER BY s.nombre`),
+        this.db.manager.query(`SELECT s.id_servicio AS id, s.nombre, 'SERVICIO' AS tipo, s.precio FROM servicios s JOIN categorias_servicio c ON c.id_categoria = s.id_categoria JOIN areas a ON a.id_area = c.id_area WHERE s.estado = 'ACTIVO' AND c.estado = 'ACTIVO' AND a.estado = 'ACTIVO' ORDER BY s.nombre`),
         this.db.manager.query(`SELECT id_producto AS id, nombre, 'PRODUCTO' AS tipo, unidad_medida FROM productos WHERE estado = 'ACTIVO' AND es_vendible = true ORDER BY nombre`),
         this.db.manager.query(`SELECT id_paquete AS id, nombre, 'PAQUETE' AS tipo, precio FROM paquetes WHERE estado = 'ACTIVO' ORDER BY nombre`),
         this.db.manager.query(`SELECT n.id_nota_venta, n.numero_nota, n.total, COALESCE(pe.nombre || ' ' || pe.ap_paterno, 'Venta general') AS paciente, (n.total - COALESCE(SUM(p.monto) FILTER (WHERE p.estado = 'REGISTRADO'), 0))::numeric(10,2) AS saldo FROM notas_venta n LEFT JOIN pacientes pa ON pa.id_paciente = n.id_paciente LEFT JOIN personas pe ON pe.id_persona = pa.id_persona LEFT JOIN pagos p ON p.id_nota_venta = n.id_nota_venta WHERE n.estado = 'EMITIDA' GROUP BY n.id_nota_venta, pe.id_persona HAVING n.total - COALESCE(SUM(p.monto) FILTER (WHERE p.estado = 'REGISTRADO'), 0) > 0 ORDER BY n.fecha_emision DESC`),
@@ -275,6 +275,7 @@ export class VentasService {
       if (!active.length)
         throw new BadRequestException('El servicio no esta activo');
       description = row.nombre;
+      detail.precio_unitario = row.precio;
     } else if (detail.id_producto) {
       const row = await manager
         .getRepository(Producto)
@@ -294,6 +295,7 @@ export class VentasService {
       if (row.estado !== 'ACTIVO')
         throw new BadRequestException('El paquete no esta activo');
       description = row.nombre;
+      detail.precio_unitario = row.precio;
     }
     const gross = Number(detail.cantidad) * Number(detail.precio_unitario);
     const discount = Number(detail.descuento ?? 0);

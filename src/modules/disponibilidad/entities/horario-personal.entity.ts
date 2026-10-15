@@ -36,6 +36,9 @@ export class HorarioPersonal {
   @Column({ type: 'time' })
   hora_fin: string;
 
+  @Column({ type: 'varchar', length: 120, nullable: true })
+  motivo_pausa_anterior: string | null;
+
   @Column({ type: 'boolean', default: true })
   estado: boolean;
 

@@ -22,7 +22,7 @@ describe('Modelo TypeORM del diagrama', () => {
   const column = (table: string, name: string) =>
     entity(table).columns.find((c) => c.databaseName === name)!;
 
-  it('registra exactamente las cuarenta y seis tablas', () => {
+  it('registra exactamente las cincuenta y dos tablas', () => {
     expect(db.entityMetadatas.map((m) => m.tableName).sort()).toEqual(
       [
         'personas',
@@ -41,6 +41,7 @@ describe('Modelo TypeORM del diagrama', () => {
         'horarios_extra_personal',
         'bloqueos_personal',
         'areas',
+        'categorias_producto',
         'categorias_servicio',
         'servicios',
         'tipos_medida',
@@ -71,6 +72,11 @@ describe('Modelo TypeORM del diagrama', () => {
         'salidas_producto_venta',
         'empresas',
         'configuraciones_documentos',
+        'configuraciones_horario_atencion',
+        'horarios_atencion_semanal',
+        'excepciones_horario_atencion',
+        'tramos_excepcion_horario_atencion',
+        'feriados',
       ].sort(),
     );
   });

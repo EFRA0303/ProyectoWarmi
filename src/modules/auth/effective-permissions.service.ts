@@ -3,6 +3,7 @@ import { DataSource } from 'typeorm';
 import { EstadoGeneral } from '../../common/enums/estado-general.enum.js';
 import { UsuarioPermiso } from '../permisos/entities/usuario-permiso.entity.js';
 import { RolPermiso } from '../roles/entities/rol-permiso.entity.js';
+import { Rol } from '../roles/entities/rol.entity.js';
 
 @Injectable()
 export class EffectivePermissionsService {
@@ -33,5 +34,13 @@ export class EffectivePermissionsService {
     }
 
     return allowed;
+  }
+
+  async roleName(roleId: number): Promise<string | null> {
+    const role = await this.db.getRepository(Rol).findOne({
+      where: { id_rol: roleId, estado: EstadoGeneral.ACTIVO },
+      select: { nombre: true },
+    });
+    return role?.nombre?.trim().toUpperCase() ?? null;
   }
 }

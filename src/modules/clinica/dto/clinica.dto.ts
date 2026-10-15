@@ -29,7 +29,8 @@ export class UpdateSolicitudDto {
   @IsOptional() @IsEnum(EstadoSolicitud) estado?: EstadoSolicitud;
 }
 export class CreateTratamientoDto {
-  @Type(() => Number) @IsInt() @Min(1) id_historial: number;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) id_paciente?: number;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) id_historial?: number;
   @Type(() => Number) @IsInt() @Min(1) id_servicio: number;
   @Type(() => Number) @IsInt() @Min(1) indicado_por: number;
   @IsOptional()

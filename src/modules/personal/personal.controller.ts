@@ -20,6 +20,7 @@ import { RegistroCompletoPersonalDto } from './dto/registro-completo-personal.dt
 import { ActualizacionCompletaPersonalDto } from './dto/actualizacion-completa-personal.dto.js';
 import { CurrentUser } from '../../common/decorators/current-user.decorator.js';
 import { Permissions } from '../../common/decorators/permissions.decorator.js';
+import { Roles } from '../../common/decorators/roles.decorator.js';
 import type { JwtPayload } from '../../common/interfaces/jwt-payload.interface.js';
 import { BajaDto } from '../../common/dto/baja.dto.js';
 import { CambiarEstadoRegistroDto } from '../../common/dto/cambiar-estado-registro.dto.js';
@@ -27,6 +28,7 @@ import { requestMetadata } from '../../common/interfaces/request-metadata.interf
 
 @ApiBearerAuth('access-token')
 @Controller('personal')
+@Roles('ROOT', 'ADMINISTRADOR')
 export class PersonalController {
   constructor(
     @Inject(PersonalService) private readonly service: PersonalService,

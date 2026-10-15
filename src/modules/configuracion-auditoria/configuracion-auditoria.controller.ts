@@ -16,10 +16,12 @@ import { UpdateConfiguracionAuditoriaDto } from './dto/update-configuracion-audi
 import { PaginationDto } from '../../common/dto/pagination.dto.js';
 import { CurrentUser } from '../../common/decorators/current-user.decorator.js';
 import { Permissions } from '../../common/decorators/permissions.decorator.js';
+import { Roles } from '../../common/decorators/roles.decorator.js';
 import type { JwtPayload } from '../../common/interfaces/jwt-payload.interface.js';
 
 @ApiBearerAuth('access-token')
 @Controller('configuracion-auditoria')
+@Roles('ROOT', 'ADMINISTRADOR')
 export class ConfiguracionAuditoriaController {
   constructor(
     @Inject(ConfiguracionAuditoriaService)

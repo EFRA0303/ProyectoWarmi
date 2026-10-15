@@ -22,6 +22,7 @@ import { UpdateUsuarioDto } from './dto/update-usuario.dto.js';
 import { UsuarioQueryDto } from './dto/usuario-query.dto.js';
 import { CurrentUser } from '../../common/decorators/current-user.decorator.js';
 import { Permissions } from '../../common/decorators/permissions.decorator.js';
+import { Roles } from '../../common/decorators/roles.decorator.js';
 import type { JwtPayload } from '../../common/interfaces/jwt-payload.interface.js';
 import { BajaDto } from '../../common/dto/baja.dto.js';
 import { requestMetadata } from '../../common/interfaces/request-metadata.interface.js';
@@ -30,6 +31,7 @@ import { CambiarEstadoUsuarioDto } from './dto/cambiar-estado-usuario.dto.js';
 
 @ApiBearerAuth('access-token')
 @Controller('usuarios')
+@Roles('ROOT', 'ADMINISTRADOR')
 export class UsuariosController {
   constructor(
     @Inject(UsuariosService) private readonly service: UsuariosService,

@@ -1,5 +1,11 @@
 import { Transform } from 'class-transformer';
-import { IsOptional, IsString, MaxLength } from 'class-validator';
+import {
+  IsOptional,
+  IsPhoneNumber,
+  IsString,
+  MaxLength,
+} from 'class-validator';
+import { normalizePhoneNumber } from '../../../common/utils/phone-number.js';
 
 const trim = ({ value }: { value: unknown }) =>
   typeof value === 'string' ? value.trim() : value;
@@ -11,9 +17,10 @@ export class DisponibilidadPersonaDto {
   @MaxLength(20)
   ci?: string;
 
-  @Transform(trim)
+  @Transform(({ value }) => normalizePhoneNumber(value))
   @IsOptional()
   @IsString()
-  @MaxLength(30)
+  @IsPhoneNumber(undefined, { message: 'El teléfono no es válido' })
+  @MaxLength(16)
   telefono1?: string;
 }

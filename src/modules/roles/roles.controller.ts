@@ -17,6 +17,7 @@ import { UpdateRolDto } from './dto/update-rol.dto.js';
 import { PaginationDto } from '../../common/dto/pagination.dto.js';
 import { CurrentUser } from '../../common/decorators/current-user.decorator.js';
 import { Permissions } from '../../common/decorators/permissions.decorator.js';
+import { Roles } from '../../common/decorators/roles.decorator.js';
 import type { JwtPayload } from '../../common/interfaces/jwt-payload.interface.js';
 import { BajaDto } from '../../common/dto/baja.dto.js';
 import { AssignPermissionDto } from './dto/assign-permission.dto.js';
@@ -26,6 +27,7 @@ import { SincronizarPermisosDto } from './dto/sincronizar-permisos.dto.js';
 
 @ApiBearerAuth('access-token')
 @Controller('roles')
+@Roles('ROOT', 'ADMINISTRADOR')
 export class RolesController {
   constructor(
     @Inject(RolesService) private readonly service: RolesService,

@@ -178,20 +178,33 @@ export class ClinicaService {
     return this.solicitudes.update(id, Object.assign({}, d));
   }
   async createTratamiento(d: CreateTratamientoDto) {
-    await this.ensureHistoryAndService(d.id_historial, d.id_servicio);
-    await this.ensureActiveStaff(d.indicado_por);
-    if (d.id_detalle_adquisicion)
-      await this.ensureAcquisitionCoverage(
-        d.id_detalle_adquisicion,
+    return this.db.transaction(async (manager) => {
+      const historyId = await this.resolveTreatmentHistory(
+        d.id_paciente,
         d.id_historial,
-        d.id_servicio,
-        d.sesiones_iniciales,
+        manager,
       );
-    return this.tratamientos.create(
-      Object.assign({}, d, {
-        estado: EstadoTratamiento.PENDIENTE,
-      }),
-    );
+      await this.ensureHistoryAndService(historyId, d.id_servicio, manager);
+      await this.ensureActiveStaff(d.indicado_por, manager);
+      if (d.id_detalle_adquisicion)
+        await this.ensureAcquisitionCoverage(
+          d.id_detalle_adquisicion,
+          historyId,
+          d.id_servicio,
+          d.sesiones_iniciales,
+          manager,
+        );
+
+      const { id_paciente: _patientId, id_historial: _historyId, ...data } = d;
+      const repository = manager.getRepository(TratamientoPaciente);
+      return repository.save(
+        repository.create({
+          ...data,
+          id_historial: historyId,
+          estado: EstadoTratamiento.PENDIENTE,
+        }),
+      );
+    });
   }
   async listTratamientos(q: DomainQueryDto) {
     const { page, limit, estado, search, desde, hasta } = q;
@@ -284,10 +297,10 @@ export class ClinicaService {
           pe.ap_paterno,
           pe.ap_materno,
           pe.ci
-        FROM historiales h
-        JOIN pacientes p ON p.id_paciente = h.id_paciente
+        FROM pacientes p
         JOIN personas pe ON pe.id_persona = p.id_persona
-        WHERE h.estado = 'ACTIVO' AND p.estado = 'ACTIVO'
+        LEFT JOIN historiales h ON h.id_paciente = p.id_paciente
+        WHERE p.estado = 'ACTIVO'
         ORDER BY pe.nombre, pe.ap_paterno, pe.ap_materno
       `),
       this.db.manager.query(`
@@ -1028,8 +1041,51 @@ export class ClinicaService {
     )
       throw new BadRequestException('La valoracion solo puede tener un origen');
   }
-  private async ensureHistoryAndService(historyId: number, serviceId: number) {
-    const [row] = (await this.db.manager.query(
+  private async resolveTreatmentHistory(
+    patientId: number | undefined,
+    historyId: number | undefined,
+    manager: EntityManager,
+  ) {
+    if (!patientId && !historyId)
+      throw new BadRequestException('Debe seleccionar un paciente');
+
+    if (!patientId) return historyId as number;
+
+    const [patient] = (await manager.query(
+      `SELECT p.id_paciente, h.id_historial, h.estado AS estado_historial
+       FROM pacientes p
+       LEFT JOIN historiales h ON h.id_paciente = p.id_paciente
+       WHERE p.id_paciente = $1 AND p.estado = 'ACTIVO'
+       FOR UPDATE OF p`,
+      [patientId],
+    )) as Array<{
+      id_paciente: number;
+      id_historial: number | null;
+      estado_historial: string | null;
+    }>;
+
+    if (!patient)
+      throw new BadRequestException('El paciente no existe o no esta activo');
+    if (patient.id_historial && patient.estado_historial !== 'ACTIVO')
+      throw new BadRequestException(
+        'El historial clinico del paciente esta cerrado. Debe reabrirlo antes de crear el tratamiento',
+      );
+    if (patient.id_historial) return patient.id_historial;
+
+    const [created] = (await manager.query(
+      `INSERT INTO historiales (id_paciente, estado)
+       VALUES ($1, 'ACTIVO')
+       RETURNING id_historial`,
+      [patientId],
+    )) as Array<{ id_historial: number }>;
+    return created.id_historial;
+  }
+  private async ensureHistoryAndService(
+    historyId: number,
+    serviceId: number,
+    manager = this.db.manager,
+  ) {
+    const [row] = (await manager.query(
       `SELECT 1 FROM historiales h
        JOIN pacientes p ON p.id_paciente = h.id_paciente
        JOIN servicios s ON s.id_servicio = $2
@@ -1063,8 +1119,9 @@ export class ClinicaService {
     historyId: number,
     serviceId: number,
     requested: number,
+    manager = this.db.manager,
   ) {
-    const [coverage] = (await this.db.manager.query(
+    const [coverage] = (await manager.query(
       `SELECT d.sesiones_incluidas - COALESCE(SUM(t.sesiones_iniciales),0) AS disponibles
        FROM detalles_adquisicion d
        JOIN adquisiciones a ON a.id_adquisicion = d.id_adquisicion

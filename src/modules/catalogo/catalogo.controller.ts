@@ -19,6 +19,7 @@ import {
   getSchemaPath,
 } from '@nestjs/swagger';
 import { Permissions } from '../../common/decorators/permissions.decorator.js';
+import { Roles } from '../../common/decorators/roles.decorator.js';
 import { CatalogoService } from './catalogo.service.js';
 import { CreateAreaDto, UpdateAreaDto } from './dto/area.dto.js';
 import {
@@ -30,6 +31,10 @@ import {
   CreateCategoriaServicioDto,
   UpdateCategoriaServicioDto,
 } from './dto/categoria-servicio.dto.js';
+import {
+  CreateCategoriaProductoDto,
+  UpdateCategoriaProductoDto,
+} from './dto/categoria-producto.dto.js';
 import { CreateServicioDto, UpdateServicioDto } from './dto/servicio.dto.js';
 import { AssignServicioMedidaDto } from './dto/servicio-medida.dto.js';
 import {
@@ -38,6 +43,7 @@ import {
 } from './dto/tipo-medida.dto.js';
 import { Area } from './entities/area.entity.js';
 import { CategoriaServicio } from './entities/categoria-servicio.entity.js';
+import { CategoriaProducto } from './entities/categoria-producto.entity.js';
 import { Servicio } from './entities/servicio.entity.js';
 import { TipoMedida } from './entities/tipo-medida.entity.js';
 
@@ -54,8 +60,15 @@ const paginatedSchema = (model: string) => ({
 
 @ApiTags('Catálogo de servicios')
 @ApiBearerAuth('access-token')
-@ApiExtraModels(Area, CategoriaServicio, Servicio, TipoMedida)
+@ApiExtraModels(
+  Area,
+  CategoriaServicio,
+  CategoriaProducto,
+  Servicio,
+  TipoMedida,
+)
 @Controller('catalogo')
+@Roles('ROOT', 'ADMINISTRADOR')
 export class CatalogoController {
   constructor(
     @Inject(CatalogoService) private readonly service: CatalogoService,
@@ -91,6 +104,38 @@ export class CatalogoController {
     @Body() dto: UpdateAreaDto,
   ) {
     return this.service.updateArea(id, dto);
+  }
+
+  @Post('categorias-producto')
+  @Permissions('catalogo.crear')
+  @ApiOperation({ summary: 'Crear una categoría de productos' })
+  createProductCategory(@Body() dto: CreateCategoriaProductoDto) {
+    return this.service.createProductCategory(dto);
+  }
+
+  @Get('categorias-producto')
+  @Permissions('catalogo.leer')
+  @ApiOperation({ summary: 'Listar categorías de productos' })
+  @ApiOkResponse({ schema: paginatedSchema(getSchemaPath(CategoriaProducto)) })
+  findProductCategories(@Query() query: CatalogoQueryDto) {
+    return this.service.findProductCategories(query);
+  }
+
+  @Get('categorias-producto/:id')
+  @Permissions('catalogo.leer')
+  @ApiOperation({ summary: 'Consultar una categoría de producto por ID' })
+  findProductCategory(@Param('id', ParseIntPipe) id: number) {
+    return this.service.findProductCategory(id);
+  }
+
+  @Patch('categorias-producto/:id')
+  @Permissions('catalogo.actualizar')
+  @ApiOperation({ summary: 'Actualizar una categoría de producto' })
+  updateProductCategory(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateCategoriaProductoDto,
+  ) {
+    return this.service.updateProductCategory(id, dto);
   }
 
   @Post('categorias')

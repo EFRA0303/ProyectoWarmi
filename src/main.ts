@@ -26,7 +26,7 @@ async function bootstrap() {
   );
 
   const swaggerConfig = new DocumentBuilder()
-    .setTitle('Warmi API')
+    .setTitle('Sistema de gestión empresarial API')
     .setDescription(
       'Documentacion interactiva de la API. Para las rutas protegidas, inicia sesion y usa Authorize con el access_token.',
     )

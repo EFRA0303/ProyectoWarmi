@@ -20,6 +20,7 @@ import {
 import { paginatedSchema } from '../../common/swagger/paginated-schema.js';
 import { DomainQueryDto } from '../../common/dto/domain-query.dto.js';
 import { Permissions } from '../../common/decorators/permissions.decorator.js';
+import { Roles } from '../../common/decorators/roles.decorator.js';
 import {
   AsignarServicioPaqueteDto,
   AsignarServicioPromocionDto,
@@ -37,6 +38,7 @@ import { Paquete, Promocion } from './entities/comercial.entities.js';
 @ApiBearerAuth('access-token')
 @ApiExtraModels(Paquete, Promocion)
 @Controller('comercial')
+@Roles('ROOT', 'ADMINISTRADOR')
 export class PaquetesPromocionesController {
   constructor(
     @Inject(PaquetesPromocionesService)

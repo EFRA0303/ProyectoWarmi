@@ -1,7 +1,20 @@
-import { BadRequestException, Inject, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { DataSource, EntityManager } from 'typeorm';
 import type { DomainQueryDto } from '../../common/dto/domain-query.dto.js';
 import { DomainResourceService } from '../../common/utils/domain-resource.service.js';
+import { EstadoGeneral } from '../../common/enums/estado-general.enum.js';
+import { CategoriaProducto } from '../catalogo/entities/categoria-producto.entity.js';
+import { optimizeProductImage } from '../../common/utils/product-image.js';
+import {
+  readProductImage,
+  removeProductImage,
+  writeProductImage,
+} from '../../common/utils/product-image-storage.js';
 import {
   EstadoLote,
   TipoMovimientoInventario,
@@ -49,32 +62,40 @@ export class InventarioService {
       'Movimiento',
     );
   }
-  createProducto(d: CreateProductoDto) {
-    return this.productos.create(d);
+  async createProducto(d: CreateProductoDto) {
+    await this.validateProduct(d);
+    return this.productos.create(this.cleanProduct(d));
   }
   async listProductos(q: DomainQueryDto) {
     const { where, values, parameter } = this.inventoryFilters(q, 'p', [
       'p.nombre',
       "COALESCE(p.descripcion, '')",
       'p.unidad_medida',
+      "COALESCE(p.marca, '')",
+      "COALESCE(p.sku, '')",
+      "COALESCE(p.codigo_barras, '')",
+      'cp.nombre',
     ]);
     const [count] = (await this.db.manager.query(
-      `SELECT COUNT(*)::int AS total FROM productos p ${where}`,
+      `SELECT COUNT(*)::int AS total FROM productos p
+       JOIN categorias_producto cp ON cp.id_categoria_producto = p.id_categoria_producto
+       ${where}`,
       values,
     )) as Array<{ total: number }>;
     const limit = parameter(q.limit);
     const offset = parameter((q.page - 1) * q.limit);
     const data = await this.db.manager.query(
-      `SELECT p.*,
+      `SELECT p.*, cp.nombre AS categoria_producto,
               COUNT(DISTINCT l.id_lote)::int AS lotes,
               COALESCE(SUM(CASE
                 WHEN m.tipo IN ('CONSUMO_SESION','VENTA','AJUSTE_SALIDA','MERMA','VENCIMIENTO') THEN -m.cantidad
                 ELSE m.cantidad END), 0)::numeric(12,2) AS stock_actual
        FROM productos p
+       JOIN categorias_producto cp ON cp.id_categoria_producto = p.id_categoria_producto
        LEFT JOIN lotes_producto l ON l.id_producto = p.id_producto
        LEFT JOIN movimientos_inventario m ON m.id_lote = l.id_lote
        ${where}
-       GROUP BY p.id_producto
+       GROUP BY p.id_producto, cp.id_categoria_producto
        ORDER BY p.estado ASC, p.nombre ASC
        LIMIT ${limit} OFFSET ${offset}`,
       values,
@@ -84,8 +105,48 @@ export class InventarioService {
   oneProducto(id: number) {
     return this.productos.one(id);
   }
-  updateProducto(id: number, d: UpdateProductoDto) {
-    return this.productos.update(id, d);
+  async updateProducto(id: number, d: UpdateProductoDto) {
+    const current = await this.productos.one(id);
+    const merged = Object.assign({}, current, d);
+    await this.validateProduct(merged);
+    return this.productos.update(id, this.cleanProduct(d));
+  }
+  async saveProductImage(
+    id: number,
+    file: { buffer: Buffer; size: number },
+  ) {
+    const product = await this.productos.one(id);
+    const image = await optimizeProductImage(file);
+    const previousPath = product.imagen_url;
+    const publicPath = await writeProductImage(image.data, product);
+    try {
+      await this.db.getRepository(Producto).update(id, {
+        imagen_url: publicPath,
+      });
+    } catch (error) {
+      if (publicPath !== previousPath) await removeProductImage(publicPath);
+      throw error;
+    }
+    if (previousPath !== publicPath) await removeProductImage(previousPath);
+    return {
+      imagen_url: publicPath,
+      ancho: image.width,
+      alto: image.height,
+      bytes: image.size,
+    };
+  }
+  async getProductImage(id: number) {
+    const product = await this.productos.one(id);
+    if (!product.imagen_url)
+      throw new NotFoundException('El producto no tiene una imagen');
+    try {
+      return {
+        data: await readProductImage(product.imagen_url),
+        mime: 'image/webp' as const,
+      };
+    } catch {
+      throw new NotFoundException('No se encontró la imagen del producto');
+    }
   }
   createLote(d: CreateLoteDto, actor: number) {
     this.loteDates(d);
@@ -335,11 +396,12 @@ export class InventarioService {
     return { id_lote: id, stock: total.toFixed(2) };
   }
   async options() {
-    const products = await this.db.manager.query(
+    const [products, lots, productCategories] = await Promise.all([
+      this.db.manager.query(
       `SELECT id_producto, nombre, unidad_medida, es_insumo, es_vendible
        FROM productos WHERE estado = 'ACTIVO' ORDER BY nombre`,
-    );
-    const lots = await this.db.manager.query(
+      ),
+      this.db.manager.query(
       `SELECT l.id_lote, l.id_producto, l.numero_lote, l.fecha_vencimiento,
               l.estado, p.nombre AS producto, p.unidad_medida,
               COALESCE(SUM(CASE
@@ -350,8 +412,13 @@ export class InventarioService {
        LEFT JOIN movimientos_inventario m ON m.id_lote = l.id_lote
        GROUP BY l.id_lote, p.id_producto
        ORDER BY p.nombre, l.fecha_ingreso DESC`,
-    );
-    return { products, lots };
+      ),
+      this.db.manager.query(
+        `SELECT id_categoria_producto, nombre, descripcion, estado
+         FROM categorias_producto ORDER BY estado ASC, nombre ASC`,
+      ),
+    ]);
+    return { products, lots, productCategories };
   }
   async operationOptions() {
     const [sessions, saleDetails, lots] = await Promise.all([
@@ -369,6 +436,34 @@ export class InventarioService {
     const limit=parameter(q.limit), offset=parameter((q.page-1)*q.limit);
     const data=await this.db.manager.query(`SELECT x.*, ${extra}, p.nombre AS producto, p.unidad_medida, l.numero_lote, m.fecha_movimiento, m.observaciones FROM ${table} x JOIN lotes_producto l ON l.id_lote=x.id_lote JOIN productos p ON p.id_producto=l.id_producto JOIN movimientos_inventario m ON m.id_movimiento=x.id_movimiento ${joins} ${where} ORDER BY m.fecha_movimiento DESC LIMIT ${limit} OFFSET ${offset}`,values);
     return {data,total:Number(count?.total??0),page:q.page,limit:q.limit,key};
+  }
+  private async validateProduct(d: Partial<CreateProductoDto>) {
+    if (!d.es_insumo && !d.es_vendible)
+      throw new BadRequestException(
+        'El producto debe ser un insumo, un artículo vendible o ambos',
+      );
+    if (d.es_vendible && (d.precio_venta === undefined || d.precio_venta === null))
+      throw new BadRequestException(
+        'Ingresa el precio de venta del producto vendible',
+      );
+    if (
+      d.id_categoria_producto &&
+      !(await this.db.getRepository(CategoriaProducto).existsBy({
+        id_categoria_producto: d.id_categoria_producto,
+        estado: EstadoGeneral.ACTIVO,
+      }))
+    )
+      throw new BadRequestException(
+        'La categoría de producto no existe o está inactiva',
+      );
+  }
+  private cleanProduct<T extends Partial<CreateProductoDto>>(d: T): T {
+    const nullable = ['marca', 'sku', 'codigo_barras', 'descripcion', 'precio_venta'] as const;
+    const copy: Record<string, unknown> = { ...d };
+    for (const field of nullable) {
+      if (copy[field] === '') copy[field] = null;
+    }
+    return copy as T;
   }
   private inventoryFilters(
     q: DomainQueryDto,

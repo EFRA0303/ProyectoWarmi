@@ -3,6 +3,7 @@ import {
   IsBoolean,
   IsEnum,
   IsInt,
+  IsNumberString,
   IsOptional,
   IsString,
   MaxLength,
@@ -22,6 +23,9 @@ export class CreateServicioDto {
   @IsInt()
   @Min(1)
   duracion_minutos: number;
+
+  @IsNumberString()
+  precio: string;
 
   @IsOptional()
   @IsString()

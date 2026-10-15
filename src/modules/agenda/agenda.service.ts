@@ -16,6 +16,15 @@ import {
   ReprogramacionCita,
 } from './entities/agenda.entities.js';
 import { EstadoCita } from '../../common/enums/domain.enums.js';
+import {
+  ConfiguracionHorarioAtencion,
+  ExcepcionHorarioAtencion,
+  Feriado,
+  HorarioAtencionSemanal,
+  TramoExcepcionHorarioAtencion,
+} from '../empresa/entities/empresa.entities.js';
+import { DiaSemana } from '../../common/enums/dia-semana.enum.js';
+
 @Injectable()
 export class AgendaService {
   private readonly citas: DomainResourceService<Cita>;
@@ -115,7 +124,15 @@ export class AgendaService {
     return appointment;
   }
   async options() {
-    const [patients, staff, treatments] = await Promise.all([
+    const [
+      patients,
+      staff,
+      treatments,
+      businessHours,
+      staffSchedules,
+      staffExtraSchedules,
+      staffBlocks,
+    ] = await Promise.all([
       this.db.query(`
         SELECT
           p.id_paciente,
@@ -169,8 +186,52 @@ export class AgendaService {
         GROUP BY t.id_tratamiento, h.id_paciente, s.id_servicio
         ORDER BY s.nombre, t.id_tratamiento
       `),
+      this.readBusinessHours(this.db.manager),
+      this.db.query(`
+        SELECT
+          id_horario,
+          id_personal,
+          dia_semana,
+          TO_CHAR(hora_inicio, 'HH24:MI') AS hora_inicio,
+          TO_CHAR(hora_fin, 'HH24:MI') AS hora_fin,
+          motivo_pausa_anterior
+        FROM horarios_personal
+        WHERE estado = true
+        ORDER BY id_personal, dia_semana, hora_inicio
+      `),
+      this.db.query(`
+        SELECT
+          id_horario_extra,
+          id_personal,
+          TO_CHAR(fecha, 'YYYY-MM-DD') AS fecha,
+          TO_CHAR(hora_inicio, 'HH24:MI') AS hora_inicio,
+          TO_CHAR(hora_fin, 'HH24:MI') AS hora_fin,
+          motivo
+        FROM horarios_extra_personal
+        WHERE estado = 'AUTORIZADO'
+        ORDER BY fecha, id_personal, hora_inicio
+      `),
+      this.db.query(`
+        SELECT
+          id_bloqueo,
+          id_personal,
+          fecha_hora_inicio,
+          fecha_hora_fin,
+          motivo
+        FROM bloqueos_personal
+        WHERE estado = true
+        ORDER BY fecha_hora_inicio, id_personal
+      `),
     ]);
-    return { patients, staff, treatments };
+    return {
+      patients,
+      staff,
+      treatments,
+      businessHours,
+      staffSchedules,
+      staffExtraSchedules,
+      staffBlocks,
+    };
   }
   async update(id: number, dto: UpdateCitaDto) {
     return this.db.transaction(async (manager) => {
@@ -414,6 +475,7 @@ export class AgendaService {
         );
     }
     const local = this.localParts(start, end);
+    await this.ensureBusinessHours(manager, local);
     const regular = (await manager.query(
       `SELECT 1 FROM horarios_personal
        WHERE id_personal = $1 AND dia_semana = $2 AND estado = true
@@ -492,5 +554,125 @@ export class AgendaService {
       startTime: `${startParts.hour}:${startParts.minute}:${startParts.second}`,
       endTime: `${endParts.hour}:${endParts.minute}:${endParts.second}`,
     };
+  }
+  private async readBusinessHours(manager: EntityManager) {
+    const config = await manager
+      .getRepository(ConfiguracionHorarioAtencion)
+      .findOne({
+        where: {},
+        order: { id_configuracion_horario: 'ASC' },
+      });
+    if (!config)
+      return {
+        intervalo_minutos: 30,
+        horarios_semanales: [
+          DiaSemana.LUNES,
+          DiaSemana.MARTES,
+          DiaSemana.MIERCOLES,
+          DiaSemana.JUEVES,
+          DiaSemana.VIERNES,
+          DiaSemana.SABADO,
+        ].map((dia_semana) => ({ dia_semana, hora_inicio: '07:00', hora_fin: '20:00' })),
+        excepciones: [],
+        feriados: [],
+      };
+    const weekly = await manager.getRepository(HorarioAtencionSemanal).find({
+      where: { id_configuracion_horario: config.id_configuracion_horario },
+      order: { dia_semana: 'ASC', hora_inicio: 'ASC' },
+    });
+    const exceptions = await manager.getRepository(ExcepcionHorarioAtencion).find({
+      where: { id_configuracion_horario: config.id_configuracion_horario },
+      order: { fecha: 'ASC' },
+    });
+    const exceptionRanges = exceptions.length
+      ? await manager.getRepository(TramoExcepcionHorarioAtencion)
+          .createQueryBuilder('range')
+          .where('range.id_excepcion_horario IN (:...ids)', {
+            ids: exceptions.map((item) => item.id_excepcion_horario),
+          })
+          .orderBy('range.hora_inicio', 'ASC')
+          .getMany()
+      : [];
+    const holidays = await manager.getRepository(Feriado).find({
+      where: { id_configuracion_horario: config.id_configuracion_horario },
+      order: { mes: 'ASC', dia: 'ASC', fecha: 'ASC' },
+    });
+    return {
+      intervalo_minutos: config.intervalo_minutos,
+      horarios_semanales: weekly.map((item) => ({
+        dia_semana: item.dia_semana,
+        hora_inicio: item.hora_inicio.slice(0, 5),
+        hora_fin: item.hora_fin.slice(0, 5),
+      })),
+      excepciones: exceptions.map((item) => ({
+        fecha: item.fecha,
+        tipo: item.tipo,
+        motivo: item.motivo,
+        tramos: exceptionRanges
+          .filter((range) => range.id_excepcion_horario === item.id_excepcion_horario)
+          .map((range) => ({
+            hora_inicio: range.hora_inicio.slice(0, 5),
+            hora_fin: range.hora_fin.slice(0, 5),
+          })),
+      })),
+      feriados: holidays.map((item) => ({
+        tipo: item.tipo,
+        nombre: item.nombre,
+        mes: item.mes,
+        dia: item.dia,
+        fecha: item.fecha,
+      })),
+    };
+  }
+  private async ensureBusinessHours(
+    manager: EntityManager,
+    local: {
+      date: string;
+      weekday: string;
+      startTime: string;
+      endTime: string;
+    },
+  ) {
+    const schedule = await this.readBusinessHours(manager);
+    const exception = schedule.excepciones.find((item) => item.fecha === local.date);
+    if (exception?.tipo === 'CERRADO')
+      throw new BadRequestException(
+        exception.motivo
+          ? `El establecimiento permanecerá cerrado: ${exception.motivo}`
+          : 'El establecimiento permanecerá cerrado en la fecha seleccionada',
+      );
+    const [, month, day] = local.date.split('-').map(Number);
+    const holiday = schedule.feriados.find(
+      (item) => item.tipo === 'DINAMICO'
+        ? item.fecha === local.date
+        : item.mes === month && item.dia === day,
+    );
+    if (holiday && exception?.tipo !== 'HORARIO_ESPECIAL')
+      throw new BadRequestException(`El establecimiento permanecerá cerrado: ${holiday.nombre}`);
+    const ranges = exception?.tipo === 'HORARIO_ESPECIAL'
+      ? exception.tramos
+      : schedule.horarios_semanales.filter(
+          (item) => item.dia_semana === (local.weekday as DiaSemana),
+        );
+    if (!ranges.length)
+      throw new BadRequestException('La fecha seleccionada no tiene horario de atención');
+    const toMinutes = (value: string) => {
+      const [hours, minutes] = value.split(':').map(Number);
+      return hours * 60 + minutes;
+    };
+    const start = toMinutes(local.startTime);
+    const end = toMinutes(local.endTime);
+    const containingRange = ranges.find(
+      (range) => start >= toMinutes(range.hora_inicio) && end <= toMinutes(range.hora_fin),
+    );
+    if (!containingRange)
+      throw new BadRequestException(
+        `La cita debe estar dentro de un tramo de atención: ${ranges.map((range) => `${range.hora_inicio}–${range.hora_fin}`).join(' o ')}`,
+      );
+    const opening = toMinutes(containingRange.hora_inicio);
+    if ((start - opening) % schedule.intervalo_minutos !== 0)
+      throw new BadRequestException(
+        `La hora de inicio debe coincidir con intervalos de ${schedule.intervalo_minutos} minutos desde las ${containingRange.hora_inicio}`,
+      );
   }
 }

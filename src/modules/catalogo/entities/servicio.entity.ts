@@ -16,6 +16,7 @@ import type { ServicioMedida } from './servicio-medida.entity.js';
 @Entity('servicios')
 @Unique('UQ_servicio_categoria_nombre', ['id_categoria', 'nombre'])
 @Check('CHK_servicios_duracion', '"duracion_minutos" > 0')
+@Check('CHK_servicios_precio', '"precio" >= 0')
 export class Servicio {
   @PrimaryGeneratedColumn({ type: 'integer' })
   id_servicio: number;
@@ -28,6 +29,9 @@ export class Servicio {
 
   @Column({ type: 'integer' })
   duracion_minutos: number;
+
+  @Column({ type: 'numeric', precision: 10, scale: 2, default: 0 })
+  precio: string;
 
   @Column({ type: 'varchar', length: 255, nullable: true })
   descripcion: string | null;

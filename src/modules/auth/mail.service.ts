@@ -1,16 +1,26 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { createConnection } from 'node:net';
 import { once } from 'node:events';
 import { createInterface } from 'node:readline';
 import { randomBytes } from 'node:crypto';
 import { mailConfig } from '../../config/mail.config.js';
+import { DataSource } from 'typeorm';
+import { Empresa } from '../empresa/entities/empresa.entities.js';
 
 @Injectable()
 export class MailService {
+  constructor(@Inject(DataSource) private readonly db: DataSource) {}
+
   async sendPasswordReset(recipient: string, token: string) {
     const config = mailConfig();
     const resetUrl = new URL(config.resetUrl);
     resetUrl.searchParams.set('token', token);
+    const company = await this.db.getRepository(Empresa).findOne({
+      select: { nombre_comercial: true },
+      where: {},
+      order: { id_empresa: 'ASC' },
+    });
+    const companyName = company?.nombre_comercial.trim() || 'SPA';
 
     const socket = createConnection({ host: config.host, port: config.port });
     socket.setTimeout(10_000, () => {
@@ -48,14 +58,14 @@ export class MailService {
     const message = [
       `From: ${safeFrom}`,
       `To: ${safeRecipient}`,
-      'Subject: Recuperacion de contrasena - Warmi',
+      `Subject: Recuperacion de contrasena - ${this.headerText(companyName)}`,
       `Date: ${new Date().toUTCString()}`,
       `Message-ID: <${messageId}>`,
       'MIME-Version: 1.0',
       'Content-Type: text/plain; charset=UTF-8',
       'Content-Transfer-Encoding: 8bit',
       '',
-      'Solicitaste restablecer tu contrasena de Warmi.',
+      `Solicitaste restablecer tu contrasena de ${companyName}.`,
       '',
       `Abre este enlace: ${resetUrl.toString()}`,
       '',
@@ -84,5 +94,9 @@ export class MailService {
     if (!value || /[\r\n<>]/.test(value))
       throw new Error('Direccion de correo SMTP invalida');
     return value;
+  }
+
+  private headerText(value: string) {
+    return value.replace(/[\r\n]/g, ' ').trim().slice(0, 150);
   }
 }

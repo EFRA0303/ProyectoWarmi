@@ -7,6 +7,7 @@ import {
   Patch,
   Post,
   Req,
+  StreamableFile,
   UploadedFile,
   UseInterceptors,
   UseGuards,
@@ -138,6 +139,17 @@ export class AuthController {
     @CurrentUser() user: JwtPayload,
   ) {
     return this.service.updateOwnProfile(user.sub, dto);
+  }
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Obtener la foto de la sesión actual' })
+  @Get('me/foto-perfil')
+  async ownProfilePhoto(@CurrentUser() user: JwtPayload) {
+    const photo = await this.service.getOwnProfilePhoto(user.sub);
+    return new StreamableFile(photo.data, {
+      type: photo.mime,
+      length: photo.data.length,
+      disposition: 'inline',
+    });
   }
   @ApiBearerAuth('access-token')
   @ApiOperation({ summary: 'Actualizar la foto de perfil de la sesión actual' })

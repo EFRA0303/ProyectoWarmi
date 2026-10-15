@@ -18,6 +18,7 @@ import { CategoriaServicio } from '../modules/catalogo/entities/categoria-servic
 import { Servicio } from '../modules/catalogo/entities/servicio.entity.js';
 import { TipoMedida } from '../modules/catalogo/entities/tipo-medida.entity.js';
 import { ServicioMedida } from '../modules/catalogo/entities/servicio-medida.entity.js';
+import { CategoriaProducto } from '../modules/catalogo/entities/categoria-producto.entity.js';
 import {
   Adquisicion,
   DetalleAdquisicion,
@@ -54,7 +55,12 @@ import {
 } from '../modules/inventario/entities/inventario.entities.js';
 import {
   ConfiguracionDocumento,
+  ConfiguracionHorarioAtencion,
   Empresa,
+  ExcepcionHorarioAtencion,
+  Feriado,
+  HorarioAtencionSemanal,
+  TramoExcepcionHorarioAtencion,
 } from '../modules/empresa/entities/empresa.entities.js';
 
 export const entities = [
@@ -78,6 +84,7 @@ export const entities = [
   Servicio,
   TipoMedida,
   ServicioMedida,
+  CategoriaProducto,
   Paquete,
   PaqueteServicio,
   Promocion,
@@ -104,4 +111,9 @@ export const entities = [
   SalidaProductoVenta,
   Empresa,
   ConfiguracionDocumento,
+  ConfiguracionHorarioAtencion,
+  HorarioAtencionSemanal,
+  ExcepcionHorarioAtencion,
+  TramoExcepcionHorarioAtencion,
+  Feriado,
 ];
