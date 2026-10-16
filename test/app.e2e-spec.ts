@@ -23,6 +23,13 @@ import { TreatmentPermissions1791200000000 } from '../dist/database/migrations/1
 import { EstadoBloqueosPersonal1791300000000 } from '../dist/database/migrations/1791300000000-EstadoBloqueosPersonal.js';
 import { SessionLifecycle1791400000000 } from '../dist/database/migrations/1791400000000-SessionLifecycle.js';
 import { SessionAppointmentActiveUniqueness1791500000000 } from '../dist/database/migrations/1791500000000-SessionAppointmentActiveUniqueness.js';
+import { BusinessHoursConfiguration1792400000000 } from '../dist/database/migrations/1792400000000-BusinessHoursConfiguration.js';
+import { AdvancedBusinessHours1792500000000 } from '../dist/database/migrations/1792500000000-AdvancedBusinessHours.js';
+import { WeeklyBreakReason1792600000000 } from '../dist/database/migrations/1792600000000-WeeklyBreakReason.js';
+import { HolidayCalendar1792700000000 } from '../dist/database/migrations/1792700000000-HolidayCalendar.js';
+import { PersonalBreakReasons1792800000000 } from '../dist/database/migrations/1792800000000-PersonalBreakReasons.js';
+import { RemoveGeneralBreakReason1792900000000 } from '../dist/database/migrations/1792900000000-RemoveGeneralBreakReason.js';
+import { RenameAvailabilityTerms1793000000000 } from '../dist/database/migrations/1793000000000-RenameAvailabilityTerms.js';
 import { hashPassword } from '../dist/common/utils/password.js';
 import { Usuario } from '../dist/modules/usuarios/entities/usuario.entity.js';
 import { MailService } from '../dist/modules/auth/mail.service.js';
@@ -72,6 +79,13 @@ describe('Postman con PostgreSQL temporal, sin datos en la base de trabajo', () 
         EstadoBloqueosPersonal1791300000000,
         SessionLifecycle1791400000000,
         SessionAppointmentActiveUniqueness1791500000000,
+        BusinessHoursConfiguration1792400000000,
+        AdvancedBusinessHours1792500000000,
+        WeeklyBreakReason1792600000000,
+        HolidayCalendar1792700000000,
+        PersonalBreakReasons1792800000000,
+        RemoveGeneralBreakReason1792900000000,
+        RenameAvailabilityTerms1793000000000,
       ],
     });
     await db.initialize();
@@ -1138,7 +1152,7 @@ describe('Postman con PostgreSQL temporal, sin datos en la base de trabajo', () 
     expect(inactive.body.data[0].estado).toBe('BAJA');
   });
 
-  it('gestiona horarios, extras y bloqueos sin solapamientos', async () => {
+  it('gestiona horarios habituales, extras y permisos sin solapamientos', async () => {
     const schedule = await api()
       .post('/disponibilidad/horarios')
       .set('Authorization', auth())
@@ -1167,26 +1181,26 @@ describe('Postman con PostgreSQL temporal, sin datos en la base de trabajo', () 
     expect(schedules.body.total).toBe(1);
 
     const extra = await api()
-      .post('/disponibilidad/horarios-extra')
+      .post('/disponibilidad/horarios-extras')
       .set('Authorization', auth())
       .send({
         id_personal: staffId,
         fecha: '2030-01-10',
         hora_inicio: '14:00',
         hora_fin: '16:00',
-        motivo: 'Atencion extraordinaria',
+        motivo: 'Atencion extra',
       })
       .expect(201);
     expect(extra.body.autorizado_por).toBe(1);
     expect(extra.body.estado).toBe('AUTORIZADO');
     await api()
-      .patch('/disponibilidad/horarios-extra/' + extra.body.id_horario_extra)
+      .patch('/disponibilidad/horarios-extras/' + extra.body.id_horario_extra)
       .set('Authorization', auth())
       .send({ estado: 'CANCELADO' })
       .expect(200);
 
-    const block = await api()
-      .post('/disponibilidad/bloqueos')
+    const permission = await api()
+      .post('/disponibilidad/permisos')
       .set('Authorization', auth())
       .send({
         id_personal: staffId,
@@ -1195,9 +1209,9 @@ describe('Postman con PostgreSQL temporal, sin datos en la base de trabajo', () 
         motivo: 'Reunion',
       })
       .expect(201);
-    expect(block.body.id_personal).toBe(staffId);
+    expect(permission.body.id_personal).toBe(staffId);
     await api()
-      .post('/disponibilidad/bloqueos')
+      .post('/disponibilidad/permisos')
       .set('Authorization', auth())
       .send({
         id_personal: staffId,
@@ -1206,7 +1220,7 @@ describe('Postman con PostgreSQL temporal, sin datos en la base de trabajo', () 
       })
       .expect(409);
     await api()
-      .patch('/disponibilidad/bloqueos/' + block.body.id_bloqueo)
+      .patch('/disponibilidad/permisos/' + permission.body.id_permiso)
       .set('Authorization', auth())
       .send({
         fecha_hora_inicio: '2030-01-10T11:00:00-04:00',
@@ -1214,7 +1228,7 @@ describe('Postman con PostgreSQL temporal, sin datos en la base de trabajo', () 
       })
       .expect(400);
     await api()
-      .get('/disponibilidad/bloqueos?id_personal=' + staffId)
+      .get('/disponibilidad/permisos?id_personal=' + staffId)
       .set('Authorization', auth())
       .expect(200);
   });

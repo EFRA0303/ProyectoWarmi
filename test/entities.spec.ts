@@ -39,7 +39,7 @@ describe('Modelo TypeORM del diagrama', () => {
         'historiales',
         'horarios_personal',
         'horarios_extra_personal',
-        'bloqueos_personal',
+        'permisos_personal',
         'areas',
         'categorias_producto',
         'categorias_servicio',
@@ -164,13 +164,13 @@ describe('Modelo TypeORM del diagrama', () => {
     expect(column('horarios_extra_personal', 'autorizado_por').type).toBe(
       'integer',
     );
-    expect(column('bloqueos_personal', 'fecha_hora_inicio').type).toBe(
+    expect(column('permisos_personal', 'fecha_hora_inicio').type).toBe(
       'timestamptz',
     );
     for (const table of [
       'horarios_personal',
       'horarios_extra_personal',
-      'bloqueos_personal',
+      'permisos_personal',
     ])
       expect(entity(table).checks.length).toBeGreaterThanOrEqual(2);
   });

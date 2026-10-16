@@ -9,12 +9,12 @@ import {
 import type { Relation } from 'typeorm';
 import type { Personal } from '../../personal/entities/personal.entity.js';
 
-@Entity('bloqueos_personal')
-@Check('CHK_bloqueos_personal_id', '"id_bloqueo" > 0')
-@Check('CHK_bloqueos_personal_fechas', '"fecha_hora_inicio" < "fecha_hora_fin"')
-export class BloqueoPersonal {
+@Entity('permisos_personal')
+@Check('CHK_permisos_personal_id', '"id_permiso" > 0')
+@Check('CHK_permisos_personal_fechas', '"fecha_hora_inicio" < "fecha_hora_fin"')
+export class PermisoPersonal {
   @PrimaryGeneratedColumn({ type: 'integer' })
-  id_bloqueo: number;
+  id_permiso: number;
 
   @Column({ type: 'integer' })
   id_personal: number;
@@ -31,7 +31,7 @@ export class BloqueoPersonal {
   @Column({ type: 'boolean', default: true })
   estado: boolean;
 
-  @ManyToOne('Personal', 'bloqueos', {
+  @ManyToOne('Personal', 'permisos', {
     nullable: false,
     onDelete: 'RESTRICT',
   })

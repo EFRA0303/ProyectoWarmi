@@ -12,7 +12,7 @@ import { Auditoria } from '../modules/auditoria/entities/auditoria.entity.js';
 import { Historial } from '../modules/historiales/entities/historial.entity.js';
 import { HorarioPersonal } from '../modules/disponibilidad/entities/horario-personal.entity.js';
 import { HorarioExtraPersonal } from '../modules/disponibilidad/entities/horario-extra-personal.entity.js';
-import { BloqueoPersonal } from '../modules/disponibilidad/entities/bloqueo-personal.entity.js';
+import { PermisoPersonal } from '../modules/disponibilidad/entities/permiso-personal.entity.js';
 import { Area } from '../modules/catalogo/entities/area.entity.js';
 import { CategoriaServicio } from '../modules/catalogo/entities/categoria-servicio.entity.js';
 import { Servicio } from '../modules/catalogo/entities/servicio.entity.js';
@@ -78,7 +78,7 @@ export const entities = [
   Historial,
   HorarioPersonal,
   HorarioExtraPersonal,
-  BloqueoPersonal,
+  PermisoPersonal,
   Area,
   CategoriaServicio,
   Servicio,

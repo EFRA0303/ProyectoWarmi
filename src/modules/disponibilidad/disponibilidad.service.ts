@@ -9,19 +9,19 @@ import { DataSource, EntityManager } from 'typeorm';
 import { EstadoGeneral } from '../../common/enums/estado-general.enum.js';
 import { EstadoHorarioExtra } from '../../common/enums/estado-horario-extra.enum.js';
 import { Personal } from '../personal/entities/personal.entity.js';
-import type { CreateBloqueoPersonalDto } from './dto/create-bloqueo-personal.dto.js';
+import type { CreatePermisoPersonalDto } from './dto/create-permiso-personal.dto.js';
 import type { CreateHorarioExtraDto } from './dto/create-horario-extra.dto.js';
 import type { CreateHorarioPersonalDto } from './dto/create-horario-personal.dto.js';
 import type { ReplaceHorariosPersonalDto } from './dto/replace-horarios-personal.dto.js';
 import type {
-  BloqueoPersonalQueryDto,
+  PermisoPersonalQueryDto,
   HorarioExtraQueryDto,
   HorarioPersonalQueryDto,
 } from './dto/disponibilidad-query.dto.js';
-import type { UpdateBloqueoPersonalDto } from './dto/update-bloqueo-personal.dto.js';
+import type { UpdatePermisoPersonalDto } from './dto/update-permiso-personal.dto.js';
 import type { UpdateHorarioExtraDto } from './dto/update-horario-extra.dto.js';
 import type { UpdateHorarioPersonalDto } from './dto/update-horario-personal.dto.js';
-import { BloqueoPersonal } from './entities/bloqueo-personal.entity.js';
+import { PermisoPersonal } from './entities/permiso-personal.entity.js';
 import { HorarioExtraPersonal } from './entities/horario-extra-personal.entity.js';
 import { HorarioPersonal } from './entities/horario-personal.entity.js';
 
@@ -251,14 +251,14 @@ export class DisponibilidadService {
     });
   }
 
-  async createBlock(dto: CreateBloqueoPersonalDto) {
+  async createPermission(dto: CreatePermisoPersonalDto) {
     const start = new Date(dto.fecha_hora_inicio);
     const end = new Date(dto.fecha_hora_fin);
     this.validateDateRange(start, end);
     return this.db.transaction(async (manager) => {
       await this.ensureActiveStaff(manager, dto.id_personal);
-      await this.ensureBlockAvailable(manager, dto.id_personal, start, end);
-      const repository = manager.getRepository(BloqueoPersonal);
+      await this.ensurePermissionAvailable(manager, dto.id_personal, start, end);
+      const repository = manager.getRepository(PermisoPersonal);
       return repository.save(
         repository.create({
           id_personal: dto.id_personal,
@@ -270,38 +270,38 @@ export class DisponibilidadService {
     });
   }
 
-  async findBlocks(query: BloqueoPersonalQueryDto) {
+  async findPermissions(query: PermisoPersonalQueryDto) {
     const { page, limit, id_personal, estado } = query;
     const builder = this.db
-      .getRepository(BloqueoPersonal)
-      .createQueryBuilder('bloqueo')
-      .orderBy('bloqueo.fecha_hora_inicio', 'DESC')
+      .getRepository(PermisoPersonal)
+      .createQueryBuilder('permiso')
+      .orderBy('permiso.fecha_hora_inicio', 'DESC')
       .skip((page - 1) * limit)
       .take(limit);
     if (id_personal !== undefined)
-      builder.andWhere('bloqueo.id_personal = :id_personal', { id_personal });
+      builder.andWhere('permiso.id_personal = :id_personal', { id_personal });
     if (estado !== undefined)
-      builder.andWhere('bloqueo.estado = :estado', { estado });
+      builder.andWhere('permiso.estado = :estado', { estado });
     const [data, total] = await builder.getManyAndCount();
     return { data, total, page, limit };
   }
 
-  async findBlock(id: number) {
+  async findPermission(id: number) {
     const row = await this.db
-      .getRepository(BloqueoPersonal)
-      .findOneBy({ id_bloqueo: id });
-    if (!row) throw new NotFoundException('Bloqueo no encontrado');
+      .getRepository(PermisoPersonal)
+      .findOneBy({ id_permiso: id });
+    if (!row) throw new NotFoundException('Permiso no encontrado');
     return row;
   }
 
-  async updateBlock(id: number, dto: UpdateBloqueoPersonalDto) {
+  async updatePermission(id: number, dto: UpdatePermisoPersonalDto) {
     return this.db.transaction(async (manager) => {
-      const repository = manager.getRepository(BloqueoPersonal);
+      const repository = manager.getRepository(PermisoPersonal);
       const row = await repository.findOne({
-        where: { id_bloqueo: id },
+        where: { id_permiso: id },
         lock: { mode: 'pessimistic_write' },
       });
-      if (!row) throw new NotFoundException('Bloqueo no encontrado');
+      if (!row) throw new NotFoundException('Permiso no encontrado');
       const start = dto.fecha_hora_inicio
         ? new Date(dto.fecha_hora_inicio)
         : row.fecha_hora_inicio;
@@ -312,7 +312,7 @@ export class DisponibilidadService {
       const active = dto.estado ?? row.estado;
       if (active) {
         await this.ensureActiveStaff(manager, row.id_personal);
-        await this.ensureBlockAvailable(
+        await this.ensurePermissionAvailable(
           manager,
           row.id_personal,
           start,
@@ -331,12 +331,12 @@ export class DisponibilidadService {
     });
   }
 
-  async removeBlock(id: number) {
-    const repository = this.db.getRepository(BloqueoPersonal);
-    const row = await repository.findOneBy({ id_bloqueo: id });
-    if (!row) throw new NotFoundException('Bloqueo no encontrado');
+  async removePermission(id: number) {
+    const repository = this.db.getRepository(PermisoPersonal);
+    const row = await repository.findOneBy({ id_permiso: id });
+    if (!row) throw new NotFoundException('Permiso no encontrado');
     await repository.remove(row);
-    return { id_bloqueo: id, eliminado: true };
+    return { id_permiso: id, eliminado: true };
   }
 
   private validateTimeRange(start: string, end: string) {
@@ -436,7 +436,7 @@ export class DisponibilidadService {
       const openByDefault = weekday !== 'DOMINGO' && start >= '07:00' && end <= '20:00';
       if (!openByDefault)
         throw new BadRequestException(
-          'El horario extraordinario debe estar dentro del horario de atención del spa',
+          'El horario extra debe estar dentro del horario de atención del spa',
         );
       return;
     }
@@ -491,12 +491,12 @@ export class DisponibilidadService {
     if (!ranges.some((range) => start >= range.hora_inicio && end <= range.hora_fin))
       throw new BadRequestException(
         ranges.length
-          ? `El horario extraordinario debe estar dentro de: ${ranges.map((range) => `${range.hora_inicio}–${range.hora_fin}`).join(' o ')}`
+          ? `El horario extra debe estar dentro de: ${ranges.map((range) => `${range.hora_inicio}–${range.hora_fin}`).join(' o ')}`
           : 'La fecha seleccionada no tiene horario de atención del spa',
       );
   }
 
-  private async ensureBlockAvailable(
+  private async ensurePermissionAvailable(
     manager: EntityManager,
     staffId: number,
     start: Date,
@@ -504,15 +504,15 @@ export class DisponibilidadService {
     excludedId?: number,
   ) {
     const builder = manager
-      .getRepository(BloqueoPersonal)
-      .createQueryBuilder('bloqueo')
-      .where('bloqueo.id_personal = :staffId', { staffId })
-      .andWhere('bloqueo.estado = true')
-      .andWhere('bloqueo.fecha_hora_inicio < :end', { end })
-      .andWhere('bloqueo.fecha_hora_fin > :start', { start });
+      .getRepository(PermisoPersonal)
+      .createQueryBuilder('permiso')
+      .where('permiso.id_personal = :staffId', { staffId })
+      .andWhere('permiso.estado = true')
+      .andWhere('permiso.fecha_hora_inicio < :end', { end })
+      .andWhere('permiso.fecha_hora_fin > :start', { start });
     if (excludedId !== undefined)
-      builder.andWhere('bloqueo.id_bloqueo != :excludedId', { excludedId });
+      builder.andWhere('permiso.id_permiso != :excludedId', { excludedId });
     if (await builder.getExists())
-      throw new ConflictException('El bloqueo se superpone con otro existente');
+      throw new ConflictException('El permiso se superpone con otro existente');
   }
 }

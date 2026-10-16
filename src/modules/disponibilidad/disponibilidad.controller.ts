@@ -23,20 +23,20 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator.js';
 import { Permissions } from '../../common/decorators/permissions.decorator.js';
 import { Roles } from '../../common/decorators/roles.decorator.js';
 import type { JwtPayload } from '../../common/interfaces/jwt-payload.interface.js';
-import { CreateBloqueoPersonalDto } from './dto/create-bloqueo-personal.dto.js';
+import { CreatePermisoPersonalDto } from './dto/create-permiso-personal.dto.js';
 import { CreateHorarioExtraDto } from './dto/create-horario-extra.dto.js';
 import { CreateHorarioPersonalDto } from './dto/create-horario-personal.dto.js';
 import {
-  BloqueoPersonalQueryDto,
+  PermisoPersonalQueryDto,
   HorarioExtraQueryDto,
   HorarioPersonalQueryDto,
 } from './dto/disponibilidad-query.dto.js';
-import { UpdateBloqueoPersonalDto } from './dto/update-bloqueo-personal.dto.js';
+import { UpdatePermisoPersonalDto } from './dto/update-permiso-personal.dto.js';
 import { UpdateHorarioExtraDto } from './dto/update-horario-extra.dto.js';
 import { UpdateHorarioPersonalDto } from './dto/update-horario-personal.dto.js';
 import { ReplaceHorariosPersonalDto } from './dto/replace-horarios-personal.dto.js';
 import { DisponibilidadService } from './disponibilidad.service.js';
-import { BloqueoPersonal } from './entities/bloqueo-personal.entity.js';
+import { PermisoPersonal } from './entities/permiso-personal.entity.js';
 import { HorarioExtraPersonal } from './entities/horario-extra-personal.entity.js';
 import { HorarioPersonal } from './entities/horario-personal.entity.js';
 
@@ -53,7 +53,7 @@ const paginatedSchema = (model: string) => ({
 
 @ApiTags('Disponibilidad del personal')
 @ApiBearerAuth('access-token')
-@ApiExtraModels(HorarioPersonal, HorarioExtraPersonal, BloqueoPersonal)
+@ApiExtraModels(HorarioPersonal, HorarioExtraPersonal, PermisoPersonal)
 @Controller('disponibilidad')
 @Roles('ROOT', 'ADMINISTRADOR')
 export class DisponibilidadController {
@@ -113,9 +113,9 @@ export class DisponibilidadController {
     return this.service.replaceStaffWeek(idPersonal, dto);
   }
 
-  @Post('horarios-extra')
+  @Post('horarios-extras')
   @Permissions('disponibilidad.crear')
-  @ApiOperation({ summary: 'Autorizar un horario adicional para una fecha' })
+  @ApiOperation({ summary: 'Autorizar un horario extra para una fecha' })
   createExtra(
     @Body() dto: CreateHorarioExtraDto,
     @CurrentUser() user: JwtPayload,
@@ -123,9 +123,9 @@ export class DisponibilidadController {
     return this.service.createExtra(dto, user.sub);
   }
 
-  @Get('horarios-extra')
+  @Get('horarios-extras')
   @Permissions('disponibilidad.leer')
-  @ApiOperation({ summary: 'Listar horarios adicionales' })
+  @ApiOperation({ summary: 'Listar horarios extras' })
   @ApiOkResponse({
     schema: paginatedSchema(getSchemaPath(HorarioExtraPersonal)),
   })
@@ -133,16 +133,16 @@ export class DisponibilidadController {
     return this.service.findExtras(query);
   }
 
-  @Get('horarios-extra/:id')
+  @Get('horarios-extras/:id')
   @Permissions('disponibilidad.leer')
-  @ApiOperation({ summary: 'Consultar un horario adicional' })
+  @ApiOperation({ summary: 'Consultar un horario extra' })
   findExtra(@Param('id', ParseIntPipe) id: number) {
     return this.service.findExtra(id);
   }
 
-  @Patch('horarios-extra/:id')
+  @Patch('horarios-extras/:id')
   @Permissions('disponibilidad.actualizar')
-  @ApiOperation({ summary: 'Actualizar o cancelar un horario adicional' })
+  @ApiOperation({ summary: 'Actualizar o cancelar un horario extra' })
   updateExtra(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateHorarioExtraDto,
@@ -150,44 +150,44 @@ export class DisponibilidadController {
     return this.service.updateExtra(id, dto);
   }
 
-  @Post('bloqueos')
+  @Post('permisos')
   @Permissions('disponibilidad.crear')
-  @ApiOperation({ summary: 'Registrar un bloqueo de disponibilidad' })
-  createBlock(@Body() dto: CreateBloqueoPersonalDto) {
-    return this.service.createBlock(dto);
+  @ApiOperation({ summary: 'Registrar un permiso del personal' })
+  createPermission(@Body() dto: CreatePermisoPersonalDto) {
+    return this.service.createPermission(dto);
   }
 
-  @Get('bloqueos')
+  @Get('permisos')
   @Permissions('disponibilidad.leer')
-  @ApiOperation({ summary: 'Listar bloqueos de disponibilidad' })
+  @ApiOperation({ summary: 'Listar permisos del personal' })
   @ApiOkResponse({
-    schema: paginatedSchema(getSchemaPath(BloqueoPersonal)),
+    schema: paginatedSchema(getSchemaPath(PermisoPersonal)),
   })
-  findBlocks(@Query() query: BloqueoPersonalQueryDto) {
-    return this.service.findBlocks(query);
+  findPermissions(@Query() query: PermisoPersonalQueryDto) {
+    return this.service.findPermissions(query);
   }
 
-  @Get('bloqueos/:id')
+  @Get('permisos/:id')
   @Permissions('disponibilidad.leer')
-  @ApiOperation({ summary: 'Consultar un bloqueo' })
-  findBlock(@Param('id', ParseIntPipe) id: number) {
-    return this.service.findBlock(id);
+  @ApiOperation({ summary: 'Consultar un permiso' })
+  findPermission(@Param('id', ParseIntPipe) id: number) {
+    return this.service.findPermission(id);
   }
 
-  @Patch('bloqueos/:id')
+  @Patch('permisos/:id')
   @Permissions('disponibilidad.actualizar')
-  @ApiOperation({ summary: 'Actualizar un bloqueo' })
-  updateBlock(
+  @ApiOperation({ summary: 'Actualizar un permiso' })
+  updatePermission(
     @Param('id', ParseIntPipe) id: number,
-    @Body() dto: UpdateBloqueoPersonalDto,
+    @Body() dto: UpdatePermisoPersonalDto,
   ) {
-    return this.service.updateBlock(id, dto);
+    return this.service.updatePermission(id, dto);
   }
 
-  @Delete('bloqueos/:id')
+  @Delete('permisos/:id')
   @Permissions('disponibilidad.actualizar')
-  @ApiOperation({ summary: 'Eliminar un bloqueo de disponibilidad' })
-  removeBlock(@Param('id', ParseIntPipe) id: number) {
-    return this.service.removeBlock(id);
+  @ApiOperation({ summary: 'Eliminar un permiso del personal' })
+  removePermission(@Param('id', ParseIntPipe) id: number) {
+    return this.service.removePermission(id);
   }
 }

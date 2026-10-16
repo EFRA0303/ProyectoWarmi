@@ -42,7 +42,7 @@ export class AgendaController {
   @ApiOperation({
     summary: 'Programar una cita',
     description:
-      'Valida la disponibilidad del personal, bloqueos, cruces de horario y duración del servicio antes de crear la cita.',
+      'Valida la disponibilidad del personal, permisos, cruces de horario y duración del servicio antes de crear la cita.',
   })
   create(@Body() d: CreateCitaDto) {
     return this.service.create(d);

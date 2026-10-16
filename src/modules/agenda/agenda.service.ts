@@ -130,8 +130,8 @@ export class AgendaService {
       treatments,
       businessHours,
       staffSchedules,
-      staffExtraSchedules,
-      staffBlocks,
+      staffExtraHours,
+      staffPermissions,
     ] = await Promise.all([
       this.db.query(`
         SELECT
@@ -213,12 +213,12 @@ export class AgendaService {
       `),
       this.db.query(`
         SELECT
-          id_bloqueo,
+          id_permiso,
           id_personal,
           fecha_hora_inicio,
           fecha_hora_fin,
           motivo
-        FROM bloqueos_personal
+        FROM permisos_personal
         WHERE estado = true
         ORDER BY fecha_hora_inicio, id_personal
       `),
@@ -229,8 +229,8 @@ export class AgendaService {
       treatments,
       businessHours,
       staffSchedules,
-      staffExtraSchedules,
-      staffBlocks,
+      staffExtraHours,
+      staffPermissions,
     };
   }
   async update(id: number, dto: UpdateCitaDto) {
@@ -492,15 +492,15 @@ export class AgendaService {
       throw new BadRequestException(
         'El personal no tiene disponibilidad autorizada en ese horario',
       );
-    const blocked = (await manager.query(
-      `SELECT 1 FROM bloqueos_personal
+    const permissions = (await manager.query(
+      `SELECT 1 FROM permisos_personal
        WHERE id_personal = $1
          AND estado = true
          AND fecha_hora_inicio < $3 AND fecha_hora_fin > $2`,
       [staffId, start, end],
     )) as unknown[];
-    if (blocked.length)
-      throw new BadRequestException('El horario se encuentra bloqueado');
+    if (permissions.length)
+      throw new BadRequestException('El horario se encuentra restringido por un permiso');
     const conflicts = (await manager.query(
       `SELECT 1 FROM citas
        WHERE (id_personal = $1 OR id_paciente = $2)

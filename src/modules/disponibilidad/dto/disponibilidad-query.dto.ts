@@ -72,7 +72,7 @@ export class HorarioExtraQueryDto extends PersonalQueryDto {
   estado?: EstadoHorarioExtra;
 }
 
-export class BloqueoPersonalQueryDto extends PersonalQueryDto {
+export class PermisoPersonalQueryDto extends PersonalQueryDto {
   @ApiPropertyOptional({ type: Boolean })
   @Transform(({ value }) => {
     if (value === 'true' || value === true) return true;
