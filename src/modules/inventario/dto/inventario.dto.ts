@@ -11,6 +11,7 @@ import {
   Matches,
   MaxLength,
   Min,
+  IsUUID,
 } from 'class-validator';
 import { EstadoGeneral } from '../../../common/enums/estado-general.enum.js';
 import {
@@ -38,6 +39,7 @@ export class CreateProductoDto {
 }
 export class UpdateProductoDto extends PartialType(CreateProductoDto) {}
 export class CreateLoteDto {
+  @IsOptional() @IsUUID() clave_operacion?: string;
   @Type(() => Number) @IsInt() @Min(1) id_producto: number;
   @IsOptional() @IsString() @MaxLength(80) numero_lote?: string;
   @IsNumberString() cantidad_inicial: string;
@@ -57,6 +59,7 @@ export class VincularServicioProductoDto {
   @IsOptional() @IsNumberString() cantidad_referencial?: string;
 }
 export class CreateMovimientoDto {
+  @IsOptional() @IsUUID() clave_operacion?: string;
   @Type(() => Number) @IsInt() @Min(1) id_lote: number;
   @IsEnum(TipoMovimientoInventario) tipo: TipoMovimientoInventario;
   @IsNumberString() cantidad: string;

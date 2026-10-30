@@ -74,8 +74,15 @@ export class VentasController {
   updateNota(
     @Param('id', ParseIntPipe) id: number,
     @Body() x: UpdateNotaVentaDto,
+    @CurrentUser() user: JwtPayload,
   ) {
-    return this.s.updateNota(id, x);
+    return this.s.updateNota(id, x, user.sub);
+  }
+  @Post('notas/:id/entregar')
+  @Permissions('ventas.actualizar')
+  @ApiOperation({ summary: 'Confirmar entrega y descontar productos automáticamente por vencimiento de lote; requiere nota pagada' })
+  deliver(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: JwtPayload) {
+    return this.s.deliverProducts(id, user.sub);
   }
   @Get('notas/:id/detalles')
   @Permissions('ventas.leer')
@@ -113,7 +120,7 @@ export class VentasController {
     description:
       'Permite modificar sus observaciones o anularlo aplicando las reglas financieras definidas.',
   })
-  updatePago(@Param('id', ParseIntPipe) id: number, @Body() d: UpdatePagoDto) {
-    return this.s.updatePago(id, d);
+  updatePago(@Param('id', ParseIntPipe) id: number, @Body() d: UpdatePagoDto, @CurrentUser() user: JwtPayload) {
+    return this.s.updatePago(id, d, user.sub);
   }
 }

@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { DataSource, EntityManager } from 'typeorm';
+import { DataSource, EntityManager, In } from 'typeorm';
 import { EstadoGeneral } from '../../common/enums/estado-general.enum.js';
 import type { CreateAreaDto, UpdateAreaDto } from './dto/area.dto.js';
 import type {
@@ -35,6 +35,10 @@ import { CategoriaProducto } from './entities/categoria-producto.entity.js';
 import { Servicio } from './entities/servicio.entity.js';
 import { ServicioMedida } from './entities/servicio-medida.entity.js';
 import { TipoMedida } from './entities/tipo-medida.entity.js';
+import {
+  Producto,
+  ServicioProducto,
+} from '../inventario/entities/inventario.entities.js';
 
 @Injectable()
 export class CatalogoService {
@@ -88,14 +92,12 @@ export class CatalogoService {
     const row = await this.db
       .getRepository(CategoriaProducto)
       .findOneBy({ id_categoria_producto: id });
-    if (!row) throw new NotFoundException('Categoría de producto no encontrada');
+    if (!row)
+      throw new NotFoundException('Categoría de producto no encontrada');
     return row;
   }
 
-  async updateProductCategory(
-    id: number,
-    dto: UpdateCategoriaProductoDto,
-  ) {
+  async updateProductCategory(id: number, dto: UpdateCategoriaProductoDto) {
     const repository = this.db.getRepository(CategoriaProducto);
     const row = await this.findProductCategory(id);
     return repository.save(repository.merge(row, dto));
@@ -125,12 +127,10 @@ export class CatalogoService {
   }
 
   async findCategory(id: number) {
-    const row = await this.db
-      .getRepository(CategoriaServicio)
-      .findOne({
-        where: { id_categoria: id },
-        relations: { area: true },
-      });
+    const row = await this.db.getRepository(CategoriaServicio).findOne({
+      where: { id_categoria: id },
+      relations: { area: true },
+    });
     if (!row) throw new NotFoundException('Categoria no encontrada');
     return row;
   }
@@ -150,9 +150,33 @@ export class CatalogoService {
   }
 
   async createService(dto: CreateServicioDto) {
-    await this.ensureActiveCategory(this.db.manager, dto.id_categoria);
-    const repository = this.db.getRepository(Servicio);
-    return repository.save(repository.create(dto));
+    return this.db.transaction(async (manager) => {
+      await this.ensureActiveCategory(manager, dto.id_categoria);
+      this.validateServicePrice(dto.precio);
+      const { medidas, productos, ...values } = dto;
+      const repository = manager.getRepository(Servicio);
+      const row = await repository.save(repository.create(values));
+      await this.saveConfiguration(
+        manager,
+        row.id_servicio,
+        medidas,
+        productos,
+      );
+      return row;
+    });
+  }
+
+  productOptions() {
+    return this.db.getRepository(Producto).find({
+      where: { estado: EstadoGeneral.ACTIVO, es_insumo: true },
+      select: {
+        id_producto: true,
+        nombre: true,
+        unidad_medida: true,
+        estado: true,
+      },
+      order: { nombre: 'ASC' },
+    });
   }
 
   async findServices(query: ServicioQueryDto) {
@@ -164,6 +188,8 @@ export class CatalogoService {
       .leftJoinAndSelect('categoria.area', 'area')
       .leftJoinAndSelect('servicio.medidas', 'medida')
       .leftJoinAndSelect('medida.tipoMedida', 'tipoMedida')
+      .leftJoinAndSelect('servicio.productos', 'insumo')
+      .leftJoinAndSelect('insumo.producto', 'producto')
       .orderBy('servicio.id_categoria', 'ASC')
       .addOrderBy('servicio.nombre', 'ASC')
       .skip((page - 1) * limit)
@@ -182,15 +208,14 @@ export class CatalogoService {
   }
 
   async findService(id: number) {
-    const row = await this.db
-      .getRepository(Servicio)
-      .findOne({
-        where: { id_servicio: id },
-        relations: {
-          categoria: { area: true },
-          medidas: { tipoMedida: true },
-        },
-      });
+    const row = await this.db.getRepository(Servicio).findOne({
+      where: { id_servicio: id },
+      relations: {
+        categoria: { area: true },
+        medidas: { tipoMedida: true },
+        productos: { producto: true },
+      },
+    });
     if (!row) throw new NotFoundException('Servicio no encontrado');
     return row;
   }
@@ -208,8 +233,120 @@ export class CatalogoService {
           manager,
           dto.id_categoria ?? row.id_categoria,
         );
-      return repository.save(repository.merge(row, dto));
+      if (dto.precio !== undefined) this.validateServicePrice(dto.precio);
+      const { medidas, productos, ...values } = dto;
+      await repository.save(repository.merge(row, values));
+      await this.saveConfiguration(manager, id, medidas, productos);
+      return row;
     });
+  }
+
+  private validateServicePrice(price: string) {
+    if (!/^\d{1,8}(?:\.\d{1,2})?$/.test(price))
+      throw new BadRequestException(
+        'El precio total debe ser un importe no negativo con hasta dos decimales',
+      );
+  }
+
+  private async saveConfiguration(
+    manager: EntityManager,
+    serviceId: number,
+    measures: CreateServicioDto['medidas'],
+    products: CreateServicioDto['productos'],
+  ) {
+    if (measures !== undefined) {
+      if (
+        !Array.isArray(measures) ||
+        new Set(measures.map((item) => item.id_tipo_medida)).size !==
+          measures.length
+      )
+        throw new BadRequestException(
+          'La configuración de mediciones contiene valores repetidos o inválidos',
+        );
+      const repository = manager.getRepository(ServicioMedida);
+      const previous = await repository.findBy({ id_servicio: serviceId });
+      const types = measures.length
+        ? await manager.getRepository(TipoMedida).findBy({
+            id_tipo_medida: In(measures.map((item) => item.id_tipo_medida)),
+          })
+        : [];
+      for (const item of measures) {
+        const type = types.find(
+          (type) => type.id_tipo_medida === item.id_tipo_medida,
+        );
+        if (
+          !type ||
+          (type.estado !== EstadoGeneral.ACTIVO &&
+            !previous.some((old) => old.id_tipo_medida === item.id_tipo_medida))
+        )
+          throw new BadRequestException(
+            'Una medición seleccionada no existe o está inactiva',
+          );
+      }
+      await repository.delete({ id_servicio: serviceId });
+      if (measures.length)
+        await repository.save(
+          measures.map((item) =>
+            repository.create({
+              id_servicio: serviceId,
+              id_tipo_medida: item.id_tipo_medida,
+              obligatorio: item.obligatorio,
+              momentos: item.momentos,
+            }),
+          ),
+        );
+    }
+    if (products !== undefined) {
+      if (
+        !Array.isArray(products) ||
+        new Set(products.map((item) => item.id_producto)).size !==
+          products.length
+      )
+        throw new BadRequestException(
+          'La configuración de productos contiene valores repetidos o inválidos',
+        );
+      const repository = manager.getRepository(ServicioProducto);
+      const previous = await repository.findBy({ id_servicio: serviceId });
+      const available = products.length
+        ? await manager.getRepository(Producto).findBy({
+            id_producto: In(products.map((item) => item.id_producto)),
+          })
+        : [];
+      for (const item of products) {
+        const product = available.find(
+          (product) => product.id_producto === item.id_producto,
+        );
+        const preserved = previous.some(
+          (old) => old.id_producto === item.id_producto,
+        );
+        if (
+          !product ||
+          ((!product.es_insumo || product.estado !== EstadoGeneral.ACTIVO) &&
+            !preserved)
+        )
+          throw new BadRequestException(
+            'Un producto seleccionado no es un insumo activo',
+          );
+        if (
+          !/^\d{1,8}(?:\.\d{1,2})?$/.test(item.cantidad_referencial) ||
+          Number(item.cantidad_referencial) <= 0
+        )
+          throw new BadRequestException(
+            'La cantidad prevista por sesión debe ser positiva y tener hasta dos decimales',
+          );
+      }
+      await repository.delete({ id_servicio: serviceId });
+      if (products.length)
+        await repository.save(
+          products.map((item) =>
+            repository.create({
+              id_servicio: serviceId,
+              id_producto: item.id_producto,
+              cantidad_referencial: item.cantidad_referencial,
+            }),
+          ),
+        );
+    }
   }
 
   createMeasureType(dto: CreateTipoMedidaDto) {
@@ -260,6 +397,7 @@ export class CatalogoService {
       });
       if (current) {
         current.obligatorio = dto.obligatorio ?? current.obligatorio;
+        current.momentos = dto.momentos ?? current.momentos;
         return repository.save(current);
       }
       return repository.save(
@@ -267,6 +405,7 @@ export class CatalogoService {
           id_servicio: serviceId,
           id_tipo_medida: dto.id_tipo_medida,
           obligatorio: dto.obligatorio,
+          momentos: dto.momentos,
         }),
       );
     });

@@ -8,9 +8,13 @@ import type {
   UpdateNotaVentaDto,
   UpdatePagoDto,
 } from './dto/ventas.dto.js';
-import { Servicio } from '../catalogo/entities/servicio.entity.js';
-import { Paquete } from '../comercial/entities/comercial.entities.js';
 import { Producto } from '../inventario/entities/inventario.entities.js';
+import { Adquisicion } from '../comercial/entities/comercial.entities.js';
+import { units, decimal, multiply } from '../../common/utils/decimal.js';
+import { operationKey } from '../../common/utils/operation-key.js';
+import { issueAcquisitionNote, noteIdentity } from './acquisition-note.js';
+import { cancelAcquisition, completeAcquisition } from './commercial-cancellation.js';
+import { deliverSaleProducts } from '../inventario/inventory-ledger.js';
 import {
   EstadoNotaVenta,
   EstadoPago,
@@ -40,39 +44,39 @@ export class VentasService {
   }
   async createNota(d: CreateNotaVentaDto, actor: number) {
     return this.db.transaction(async (m) => {
+      const operation = await operationKey(m, 'notas_venta', d.clave_operacion, actor, d);
+      if (operation.existingId) return m.getRepository(NotaVenta).findOneByOrFail({ id_nota_venta: operation.existingId });
       const { detalles, ...head } = d;
+      if (!Number.isFinite(new Date(head.fecha_emision).getTime()) || new Date(head.fecha_emision).getTime() > Date.now() + 300000) throw new BadRequestException('La fecha de emisión no es válida o está en el futuro');
+      if (head.id_adquisicion) {
+        if (detalles.length) throw new BadRequestException('La nota de una adquisición usa sus importes congelados; no agregues conceptos manuales');
+        await this.validateOrigin(m, head.id_adquisicion, head.id_paciente);
+        return issueAcquisitionNote(m, head.id_adquisicion, actor);
+      }
       if (!detalles.length)
         throw new BadRequestException(
           'La nota de venta debe contener al menos un detalle',
         );
+      if (detalles.some(item => !item.id_producto || item.id_servicio || item.id_paquete)) throw new BadRequestException('Registra servicios, paquetes y promociones desde Adquisiciones del paciente. Su nota se genera automáticamente.');
       const prepared = await Promise.all(
         detalles.map((detail) => this.prepareDetail(m, detail)),
       );
-      const subtotal = this.money(
-        prepared.reduce((sum, detail) => sum + Number(detail.subtotal), 0),
-      );
-      const discount = this.money(Number(head.descuento ?? 0));
-      const total = this.money(Number(subtotal) - Number(discount));
-      if (Number(total) < 0)
+      const subtotal = prepared.reduce((sum, detail) => sum + units(detail.subtotal), 0n);
+      const discount = units(head.descuento ?? '0', 'Descuento general');
+      if (discount > subtotal)
         throw new BadRequestException(
           'El descuento no puede superar el subtotal',
         );
-      const origin = await this.validateOrigin(
-        m,
-        head.id_adquisicion,
-        head.id_paciente,
-      );
-      if (origin?.total !== undefined && Number(origin.total) !== Number(total))
-        throw new BadRequestException(
-          'El total de la nota no coincide con la adquisicion',
-        );
+      await this.validateOrigin(m, undefined, head.id_paciente);
+      const identity = await noteIdentity(m, head.numero_nota);
       const nota = await this.notas.create(
         {
           ...head,
-          id_paciente: head.id_paciente ?? origin?.id_paciente,
-          subtotal,
-          descuento: discount,
-          total,
+          ...identity,
+          huella_operacion: operation.hash,
+          subtotal: decimal(subtotal),
+          descuento: decimal(discount),
+          total: decimal(subtotal - discount),
           fecha_emision: new Date(head.fecha_emision),
           emitido_por: actor,
           estado: EstadoNotaVenta.EMITIDA,
@@ -106,7 +110,9 @@ export class VentasService {
               em.nombre || ' ' || em.ap_paterno AS emitido_por_nombre,
               (SELECT COUNT(*)::int FROM detalles_nota_venta d WHERE d.id_nota_venta = n.id_nota_venta) AS detalles,
               COALESCE((SELECT SUM(pg.monto) FROM pagos pg WHERE pg.id_nota_venta = n.id_nota_venta AND pg.estado = 'REGISTRADO'), 0)::numeric(10,2) AS pagado,
-              (n.total - COALESCE((SELECT SUM(pg.monto) FROM pagos pg WHERE pg.id_nota_venta = n.id_nota_venta AND pg.estado = 'REGISTRADO'), 0))::numeric(10,2) AS saldo
+               (CASE WHEN n.estado='ANULADA' THEN 0 ELSE n.total - COALESCE((SELECT SUM(pg.monto) FROM pagos pg WHERE pg.id_nota_venta = n.id_nota_venta AND pg.estado = 'REGISTRADO'), 0) END)::numeric(10,2) AS saldo,
+               (SELECT COUNT(*)::int FROM detalles_nota_venta d WHERE d.id_nota_venta=n.id_nota_venta AND d.id_producto IS NOT NULL AND d.cantidad*d.factor_stock > COALESCE((SELECT SUM(s.cantidad) FROM salidas_producto_venta s WHERE s.id_detalle=d.id_detalle),0)) AS productos_pendientes,
+               (SELECT COUNT(*)::int FROM salidas_producto_venta s JOIN detalles_nota_venta d ON d.id_detalle=s.id_detalle WHERE d.id_nota_venta=n.id_nota_venta) AS entregas_registradas
        FROM notas_venta n
        LEFT JOIN pacientes pa ON pa.id_paciente = n.id_paciente
        LEFT JOIN personas pe ON pe.id_persona = pa.id_persona
@@ -122,15 +128,44 @@ export class VentasService {
   oneNota(id: number) {
     return this.notas.one(id);
   }
-  async updateNota(id: number, d: UpdateNotaVentaDto) {
-    const current = await this.notas.one(id);
-    if (d.estado && d.estado !== EstadoNotaVenta.ANULADA)
-      throw new BadRequestException(
-        'Una nota emitida solamente puede cambiar a ANULADA',
-      );
-    if (current.estado === EstadoNotaVenta.ANULADA)
-      throw new BadRequestException('La nota de venta ya esta anulada');
-    return this.notas.update(id, d);
+  async updateNota(id: number, d: UpdateNotaVentaDto, actor: number) {
+    return this.db.transaction(async manager => {
+      const current = await this.lockNote(manager, id);
+      if (current.estado === EstadoNotaVenta.ANULADA) return current;
+      if (d.estado) {
+        if (d.estado !== EstadoNotaVenta.ANULADA) throw new BadRequestException('La nota solo puede anularse');
+        if (!d.motivo_anulacion || d.motivo_anulacion.trim().length < 5) throw new BadRequestException('Indica un motivo de anulación de al menos cinco caracteres');
+        if (current.id_adquisicion) {
+          await cancelAcquisition(manager, current.id_adquisicion, actor, d.motivo_anulacion);
+          return manager.getRepository(NotaVenta).findOneByOrFail({ id_nota_venta: id });
+        }
+        if (await manager.getRepository(Pago).existsBy({ id_nota_venta: id, estado: EstadoPago.REGISTRADO })) throw new BadRequestException('La nota tiene pagos registrados. Anular no equivale a devolver dinero.');
+        if ((await manager.query(`SELECT 1 FROM salidas_producto_venta s JOIN detalles_nota_venta d ON d.id_detalle=s.id_detalle WHERE d.id_nota_venta=$1 LIMIT 1`, [id])).length) throw new BadRequestException('Hay productos entregados. Registra una devolución controlada antes de anular.');
+        current.estado = EstadoNotaVenta.ANULADA;
+        current.anulado_por = actor;
+        current.motivo_anulacion = d.motivo_anulacion.trim();
+      }
+      if (d.observaciones !== undefined) current.observaciones = d.observaciones;
+      return manager.getRepository(NotaVenta).save(current);
+    });
+  }
+
+  async deliverProducts(id: number, actor: number) {
+    return this.db.transaction(async manager => {
+      const note = await this.lockNote(manager, id);
+      if (note.estado !== EstadoNotaVenta.EMITIDA) throw new BadRequestException('La nota no está emitida');
+      const payments = await manager.getRepository(Pago).findBy({ id_nota_venta: id, estado: EstadoPago.REGISTRADO });
+      if (payments.reduce((sum, item) => sum + units(item.monto), 0n) < units(note.total)) throw new BadRequestException('Completa el pago de la nota antes de confirmar la entrega de productos');
+      return deliverSaleProducts(manager, id, actor);
+    });
+  }
+
+  private async lockNote(manager: EntityManager, id: number) {
+    const repo = manager.getRepository(NotaVenta);
+    const known = await repo.findOneBy({ id_nota_venta: id });
+    if (!known) throw new BadRequestException('Nota de venta no encontrada');
+    if (known.id_adquisicion) await manager.getRepository(Adquisicion).findOne({ where: { id_adquisicion: known.id_adquisicion }, lock: { mode: 'pessimistic_write' } });
+    return repo.findOneOrFail({ where: { id_nota_venta: id }, lock: { mode: 'pessimistic_write' } });
   }
   async detalles(id: number) {
     await this.notas.one(id);
@@ -140,10 +175,11 @@ export class VentasService {
   }
   createPago(d: CreatePagoDto, actor: number) {
     return this.db.transaction(async (manager) => {
-      const note = await manager.getRepository(NotaVenta).findOne({
-        where: { id_nota_venta: d.id_nota_venta },
-        lock: { mode: 'pessimistic_write' },
-      });
+      const operation = await operationKey(manager, 'pagos', d.clave_operacion, actor, d);
+      if (operation.existingId) return manager.getRepository(Pago).findOneByOrFail({ id_pago: operation.existingId });
+      const amount = units(d.monto, 'Monto del pago', true);
+      if (new Date(d.fecha_pago).getTime() > Date.now() + 300000 || !Number.isFinite(new Date(d.fecha_pago).getTime())) throw new BadRequestException('La fecha del pago no es válida o está en el futuro');
+      const note = await this.lockNote(manager, d.id_nota_venta);
       if (!note || note.estado !== EstadoNotaVenta.EMITIDA)
         throw new BadRequestException(
           'La nota no existe o no se encuentra emitida',
@@ -155,21 +191,25 @@ export class VentasService {
         },
       });
       const paid = registered.reduce(
-        (sum, payment) => sum + Number(payment.monto),
-        0,
+        (sum, payment) => sum + units(payment.monto),
+        0n,
       );
-      if (paid + Number(d.monto) > Number(note.total))
+      if (paid + amount > units(note.total))
         throw new BadRequestException(
-          `El pago supera el saldo pendiente de ${this.money(Number(note.total) - paid)}`,
+          `El pago supera el saldo pendiente de ${decimal(units(note.total) - paid)}`,
         );
-      return this.pagos.create(
+      const payment = await this.pagos.create(
         Object.assign({}, d, {
+          monto: decimal(amount),
+          huella_operacion: operation.hash,
           fecha_pago: new Date(d.fecha_pago),
           registrado_por: actor,
           estado: EstadoPago.REGISTRADO,
         }),
         manager,
       );
+      if (note.id_adquisicion) await completeAcquisition(manager, note.id_adquisicion);
+      return payment;
     });
   }
   async listPagos(q: DomainQueryDto) {
@@ -206,27 +246,35 @@ export class VentasService {
   onePago(id: number) {
     return this.pagos.one(id);
   }
-  async updatePago(id: number, d: UpdatePagoDto) {
-    const current = await this.pagos.one(id);
-    if (d.estado && d.estado !== EstadoPago.ANULADO)
-      throw new BadRequestException(
-        'Un pago registrado solamente puede cambiar a ANULADO',
-      );
-    if (current.estado === EstadoPago.ANULADO)
-      throw new BadRequestException('El pago ya esta anulado');
-    return this.pagos.update(id, d);
+  async updatePago(id: number, d: UpdatePagoDto, actor: number) {
+    return this.db.transaction(async manager => {
+      const known = await manager.getRepository(Pago).findOneByOrFail({ id_pago: id });
+      const note = await this.lockNote(manager, known.id_nota_venta);
+      const current = await manager.getRepository(Pago).findOneOrFail({ where: { id_pago: id }, lock: { mode: 'pessimistic_write' } });
+      if (current.estado === EstadoPago.ANULADO) return current;
+      if (note.estado !== EstadoNotaVenta.EMITIDA) throw new BadRequestException('No se puede modificar un pago de una nota anulada');
+      if (d.estado) {
+        if (d.estado !== EstadoPago.ANULADO || !d.motivo_anulacion || d.motivo_anulacion.trim().length < 5) throw new BadRequestException('Para anular, indica un motivo de al menos cinco caracteres');
+        const outputs = await manager.query(`SELECT 1 FROM salidas_producto_venta s JOIN detalles_nota_venta d ON d.id_detalle=s.id_detalle WHERE d.id_nota_venta=$1 LIMIT 1`, [note.id_nota_venta]) as unknown[];
+        const sessions = note.id_adquisicion ? await manager.query(`SELECT 1 FROM detalles_adquisicion d JOIN tratamientos_paciente t ON t.id_detalle_adquisicion=d.id_detalle_adquisicion JOIN sesiones s ON s.id_tratamiento=t.id_tratamiento WHERE d.id_adquisicion=$1 AND s.estado IN ('EN_CURSO','FINALIZADA') LIMIT 1`, [note.id_adquisicion]) as unknown[] : [];
+        if (outputs.length || sessions.length) throw new BadRequestException('La venta ya tiene entregas o atención clínica. Requiere un procedimiento de devolución, no anular el pago.');
+        current.estado = EstadoPago.ANULADO;
+        current.anulado_por = actor;
+        current.motivo_anulacion = d.motivo_anulacion.trim();
+      }
+      if (d.observaciones !== undefined) current.observaciones = d.observaciones;
+      return manager.getRepository(Pago).save(current);
+    });
   }
   async options() {
-    const [patients, acquisitions, services, products, packages, notes] =
+    const [patients, acquisitions, products, notes] =
       await Promise.all([
         this.db.manager.query(`SELECT pa.id_paciente, pe.nombre, pe.ap_paterno, pe.ap_materno, pe.ci FROM pacientes pa JOIN personas pe ON pe.id_persona = pa.id_persona WHERE pa.estado = 'ACTIVO' ORDER BY pe.ap_paterno, pe.nombre`),
         this.db.manager.query(`SELECT a.id_adquisicion, a.id_paciente, a.total, a.fecha_adquisicion, COALESCE(pq.nombre, pr.nombre, 'Adquisición') AS concepto FROM adquisiciones a LEFT JOIN paquetes pq ON pq.id_paquete = a.id_paquete LEFT JOIN promociones pr ON pr.id_promocion = a.id_promocion LEFT JOIN notas_venta n ON n.id_adquisicion = a.id_adquisicion WHERE a.estado <> 'CANCELADA' AND n.id_nota_venta IS NULL ORDER BY a.fecha_adquisicion DESC`),
-        this.db.manager.query(`SELECT s.id_servicio AS id, s.nombre, 'SERVICIO' AS tipo, s.precio FROM servicios s JOIN categorias_servicio c ON c.id_categoria = s.id_categoria JOIN areas a ON a.id_area = c.id_area WHERE s.estado = 'ACTIVO' AND c.estado = 'ACTIVO' AND a.estado = 'ACTIVO' ORDER BY s.nombre`),
-        this.db.manager.query(`SELECT id_producto AS id, nombre, 'PRODUCTO' AS tipo, unidad_medida FROM productos WHERE estado = 'ACTIVO' AND es_vendible = true ORDER BY nombre`),
-        this.db.manager.query(`SELECT id_paquete AS id, nombre, 'PAQUETE' AS tipo, precio FROM paquetes WHERE estado = 'ACTIVO' ORDER BY nombre`),
+        this.db.manager.query(`SELECT id_producto AS id, nombre, 'PRODUCTO' AS tipo, unidad_medida, presentacion, contenido_presentacion, precio_venta AS precio FROM productos WHERE estado = 'ACTIVO' AND es_vendible = true AND precio_venta IS NOT NULL ORDER BY nombre`),
         this.db.manager.query(`SELECT n.id_nota_venta, n.numero_nota, n.total, COALESCE(pe.nombre || ' ' || pe.ap_paterno, 'Venta general') AS paciente, (n.total - COALESCE(SUM(p.monto) FILTER (WHERE p.estado = 'REGISTRADO'), 0))::numeric(10,2) AS saldo FROM notas_venta n LEFT JOIN pacientes pa ON pa.id_paciente = n.id_paciente LEFT JOIN personas pe ON pe.id_persona = pa.id_persona LEFT JOIN pagos p ON p.id_nota_venta = n.id_nota_venta WHERE n.estado = 'EMITIDA' GROUP BY n.id_nota_venta, pe.id_persona HAVING n.total - COALESCE(SUM(p.monto) FILTER (WHERE p.estado = 'REGISTRADO'), 0) > 0 ORDER BY n.fecha_emision DESC`),
       ]);
-    return { patients, acquisitions, items: [...services, ...products, ...packages], notes };
+    return { patients, acquisitions, items: products, notes };
   }
   private saleFilters(q: DomainQueryDto, alias: string, search: string[]) {
     const where: string[] = [];
@@ -257,62 +305,30 @@ export class VentasService {
     detail: CreateNotaVentaDto['detalles'][number],
   ) {
     this.validateItem(detail);
-    let description: string;
-    let unit: string | null = null;
-    if (detail.id_servicio) {
-      const row = await manager
-        .getRepository(Servicio)
-        .findOneBy({ id_servicio: detail.id_servicio });
-      if (!row) throw new BadRequestException('Servicio no encontrado');
-      const active = (await manager.query(
-        `SELECT 1 FROM servicios s
-         JOIN categorias_servicio c ON c.id_categoria = s.id_categoria
-         JOIN areas a ON a.id_area = c.id_area
-         WHERE s.id_servicio = $1 AND s.estado = 'ACTIVO'
-           AND c.estado = 'ACTIVO' AND a.estado = 'ACTIVO'`,
-        [detail.id_servicio],
-      )) as unknown[];
-      if (!active.length)
-        throw new BadRequestException('El servicio no esta activo');
-      description = row.nombre;
-      detail.precio_unitario = row.precio;
-    } else if (detail.id_producto) {
-      const row = await manager
-        .getRepository(Producto)
-        .findOneBy({ id_producto: detail.id_producto });
-      if (!row) throw new BadRequestException('Producto no encontrado');
-      if (!row.es_vendible || row.estado !== 'ACTIVO')
-        throw new BadRequestException(
-          'El producto no esta habilitado para venta',
-        );
-      description = row.nombre;
-      unit = row.unidad_medida;
-    } else {
-      const row = await manager
-        .getRepository(Paquete)
-        .findOneBy({ id_paquete: detail.id_paquete! });
-      if (!row) throw new BadRequestException('Paquete no encontrado');
-      if (row.estado !== 'ACTIVO')
-        throw new BadRequestException('El paquete no esta activo');
-      description = row.nombre;
-      detail.precio_unitario = row.precio;
-    }
-    const gross = Number(detail.cantidad) * Number(detail.precio_unitario);
-    const discount = Number(detail.descuento ?? 0);
+    if (!detail.id_producto) throw new BadRequestException('Selecciona un producto vendible');
+    const row = await manager.getRepository(Producto).findOneBy({ id_producto: detail.id_producto });
+    if (!row || !row.es_vendible || row.estado !== 'ACTIVO' || row.precio_venta === null) throw new BadRequestException('El producto no está habilitado para venta o no tiene precio');
+    const quantity = units(detail.cantidad, 'Cantidad de presentaciones', true);
+    if (quantity % 100n) throw new BadRequestException('La venta de productos se registra en presentaciones completas; el consumo clínico usa la unidad base');
+    const price = units(row.precio_venta, 'Precio de catálogo');
+    const factor = units(row.contenido_presentacion, 'Contenido por presentación', true);
+    const gross = multiply(quantity, price);
+    const discount = units(detail.descuento ?? '0', 'Descuento de detalle');
     if (discount > gross)
       throw new BadRequestException(
-        `El descuento del detalle ${description} supera su importe`,
+        `El descuento del detalle ${row.nombre} supera su importe`,
       );
     return {
       id_servicio: detail.id_servicio,
       id_producto: detail.id_producto,
       id_paquete: detail.id_paquete,
-      descripcion_snapshot: description,
-      unidad_snapshot: unit,
-      cantidad: detail.cantidad,
-      precio_unitario: this.money(Number(detail.precio_unitario)),
-      descuento: this.money(discount),
-      subtotal: this.money(gross - discount),
+      descripcion_snapshot: row.nombre,
+      unidad_snapshot: row.presentacion,
+      factor_stock: decimal(factor),
+      cantidad: decimal(quantity),
+      precio_unitario: decimal(price),
+      descuento: decimal(discount),
+      subtotal: decimal(gross - discount),
     };
   }
   private async validateOrigin(
@@ -345,8 +361,5 @@ export class VentasService {
         'La adquisicion no corresponde al paciente indicado',
       );
     return rows[0];
-  }
-  private money(value: number) {
-    return value.toFixed(2);
   }
 }

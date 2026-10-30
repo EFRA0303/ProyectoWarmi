@@ -1,5 +1,6 @@
 import { BadRequestException, Inject, Injectable } from '@nestjs/common';
 import { DataSource, EntityManager } from 'typeorm';
+import { completeAcquisition, requireAcquisitionPayment } from '../ventas/commercial-cancellation.js';
 import type { DomainQueryDto } from '../../common/dto/domain-query.dto.js';
 import { DomainResourceService } from '../../common/utils/domain-resource.service.js';
 import type {
@@ -179,6 +180,8 @@ export class ClinicaService {
   }
   async createTratamiento(d: CreateTratamientoDto) {
     return this.db.transaction(async (manager) => {
+      if (!d.id_detalle_adquisicion) throw new BadRequestException('Primero registra la adquisición del paciente y su primer pago; después selecciona la adquisición al asignar el servicio');
+      await requireAcquisitionPayment(manager, d.id_detalle_adquisicion);
       const historyId = await this.resolveTreatmentHistory(
         d.id_paciente,
         d.id_historial,
@@ -310,6 +313,8 @@ export class ClinicaService {
           s.duracion_minutos,
           s.descripcion,
           s.requiere_valoracion,
+          s.sesiones_incluidas,
+          s.precio,
           c.nombre AS categoria,
           a.nombre AS area
         FROM servicios s
@@ -485,6 +490,7 @@ export class ClinicaService {
           'El tratamiento no existe o no admite nuevas sesiones',
         );
       await this.ensureActiveStaff(d.atendido_por, manager);
+      if (treatment.id_detalle_adquisicion) await requireAcquisitionPayment(manager, treatment.id_detalle_adquisicion);
       const [quota] = (await manager.query(
         `SELECT t.sesiones_iniciales + COALESCE(SUM(a.sesiones_agregadas),0) AS total
          FROM tratamientos_paciente t
@@ -586,6 +592,7 @@ export class ClinicaService {
          se.finalizada_en,
          se.estado,
          se.observaciones,
+         h.id_historial,
          h.id_paciente,
          CONCAT_WS(' ', paciente.nombre, paciente.ap_paterno, paciente.ap_materno) AS paciente,
          paciente.ci,
@@ -730,7 +737,10 @@ export class ClinicaService {
       }
       session.estado = EstadoSesion.FINALIZADA;
       session.finalizada_en = new Date();
-      return repository.save(session);
+      await repository.save(session);
+      const acquisitions = await manager.query(`SELECT d.id_adquisicion FROM tratamientos_paciente t JOIN detalles_adquisicion d ON d.id_detalle_adquisicion=t.id_detalle_adquisicion WHERE t.id_tratamiento=$1`, [session.id_tratamiento]) as Array<{ id_adquisicion: number }>;
+      if (acquisitions[0]) await completeAcquisition(manager, acquisitions[0].id_adquisicion);
+      return session;
     });
   }
   async cancelarSesion(id: number) {
@@ -745,6 +755,7 @@ export class ClinicaService {
         throw new BadRequestException(
           'Solo se puede cancelar una sesion en curso',
         );
+      if ((await manager.query(`SELECT 1 FROM consumos_sesion WHERE id_sesion=$1 LIMIT 1`, [id])).length) throw new BadRequestException('La sesión ya registra productos consumidos. No la canceles sin resolver esos consumos mediante un ajuste autorizado.');
       session.estado = EstadoSesion.CANCELADA;
       session.finalizada_en = null;
       return repository.save(session);
@@ -787,8 +798,13 @@ export class ClinicaService {
       conditions.push(`v.id_personal = ${parameter(q.id_personal)}`);
     if (q.id_historial)
       conditions.push(`v.id_historial = ${parameter(q.id_historial)}`);
-    if (q.id_tratamiento)
-      conditions.push(`v.id_tratamiento = ${parameter(q.id_tratamiento)}`);
+    if (q.id_tratamiento) {
+      const treatment = parameter(q.id_tratamiento);
+      conditions.push(
+        `(v.id_tratamiento = ${treatment} OR ses.id_tratamiento = ${treatment})`,
+      );
+    }
+    if (q.id_sesion) conditions.push(`v.id_sesion = ${parameter(q.id_sesion)}`);
     if (q.id_servicio)
       conditions.push(
         `COALESCE(sol.id_servicio, tr.id_servicio, trs.id_servicio) = ${parameter(q.id_servicio)}`,
@@ -868,9 +884,16 @@ export class ClinicaService {
     return { data, total: Number(count?.total ?? 0), page, limit };
   }
   async opcionesValoraciones() {
-    const [patients, staff, requests, treatments, sessions, measureTypes, serviceMeasures] =
-      await Promise.all([
-        this.db.manager.query(`
+    const [
+      patients,
+      staff,
+      requests,
+      treatments,
+      sessions,
+      measureTypes,
+      serviceMeasures,
+    ] = await Promise.all([
+      this.db.manager.query(`
           SELECT h.id_historial, p.id_paciente, pe.nombre, pe.ap_paterno,
                  pe.ap_materno, pe.ci
           FROM historiales h
@@ -878,7 +901,7 @@ export class ClinicaService {
           JOIN personas pe ON pe.id_persona = p.id_persona
           WHERE h.estado = 'ACTIVO' AND p.estado = 'ACTIVO'
           ORDER BY pe.nombre, pe.ap_paterno, pe.ap_materno`),
-        this.db.manager.query(`
+      this.db.manager.query(`
           SELECT per.id_personal, pe.nombre, pe.ap_paterno, pe.ap_materno,
                  per.cargo, per.profesion, per.color_agenda
           FROM personal per
@@ -887,7 +910,7 @@ export class ClinicaService {
           WHERE per.estado = 'ACTIVO'
             AND UPPER(BTRIM(per.cargo)) <> 'SECRETARIA'
           ORDER BY pe.nombre, pe.ap_paterno, pe.ap_materno`),
-        this.db.manager.query(`
+      this.db.manager.query(`
           SELECT sol.id_solicitud, sol.id_historial, h.id_paciente,
                  sol.id_servicio, s.nombre AS servicio, sol.estado,
                  CONCAT_WS(' ', pe.nombre, pe.ap_paterno, pe.ap_materno) AS paciente
@@ -899,7 +922,7 @@ export class ClinicaService {
           WHERE h.estado = 'ACTIVO' AND p.estado = 'ACTIVO'
             AND sol.estado <> 'DESCARTADO'
           ORDER BY sol.fecha_solicitud DESC`),
-        this.db.manager.query(`
+      this.db.manager.query(`
           SELECT tr.id_tratamiento, tr.id_historial, h.id_paciente,
                  tr.id_servicio, s.nombre AS servicio, tr.estado,
                  CONCAT_WS(' ', pe.nombre, pe.ap_paterno, pe.ap_materno) AS paciente
@@ -911,7 +934,7 @@ export class ClinicaService {
           WHERE h.estado = 'ACTIVO' AND p.estado = 'ACTIVO'
             AND tr.estado <> 'CANCELADO'
           ORDER BY tr.id_tratamiento DESC`),
-        this.db.manager.query(`
+      this.db.manager.query(`
           SELECT ses.id_sesion, tr.id_tratamiento, tr.id_historial,
                  h.id_paciente, tr.id_servicio, s.nombre AS servicio,
                  ses.estado, ses.fecha_sesion,
@@ -925,18 +948,18 @@ export class ClinicaService {
           WHERE h.estado = 'ACTIVO' AND p.estado = 'ACTIVO'
             AND ses.estado IN ('EN_CURSO', 'FINALIZADA')
           ORDER BY ses.fecha_sesion DESC`),
-        this.db.manager.query(`
+      this.db.manager.query(`
           SELECT id_tipo_medida, nombre, unidad
           FROM tipos_medida
           WHERE estado = 'ACTIVO'
           ORDER BY nombre`),
-        this.db.manager.query(`
+      this.db.manager.query(`
           SELECT sm.id_servicio, sm.id_tipo_medida, sm.obligatorio
           FROM servicios_medidas sm
           JOIN tipos_medida tm ON tm.id_tipo_medida = sm.id_tipo_medida
           WHERE tm.estado = 'ACTIVO'
           ORDER BY sm.id_servicio, tm.nombre`),
-      ]);
+    ]);
     return {
       patients,
       staff,

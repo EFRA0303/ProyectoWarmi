@@ -1,6 +1,8 @@
 import { PartialType } from '@nestjs/mapped-types';
+import { Type } from 'class-transformer';
 import {
   IsBoolean,
+  IsArray,
   IsEnum,
   IsInt,
   IsNumberString,
@@ -8,8 +10,15 @@ import {
   IsString,
   MaxLength,
   Min,
+  Max,
+  ValidateNested,
+  ArrayMaxSize,
 } from 'class-validator';
 import { EstadoGeneral } from '../../../common/enums/estado-general.enum.js';
+import {
+  ServicioMedidaConfigDto,
+  ServicioProductoConfigDto,
+} from './service-configuration.dto.js';
 
 export class CreateServicioDto {
   @IsInt()
@@ -26,6 +35,26 @@ export class CreateServicioDto {
 
   @IsNumberString()
   precio: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(1000)
+  sesiones_incluidas?: number;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(100)
+  @ValidateNested({ each: true })
+  @Type(() => ServicioMedidaConfigDto)
+  medidas?: ServicioMedidaConfigDto[];
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(100)
+  @ValidateNested({ each: true })
+  @Type(() => ServicioProductoConfigDto)
+  productos?: ServicioProductoConfigDto[];
 
   @IsOptional()
   @IsString()

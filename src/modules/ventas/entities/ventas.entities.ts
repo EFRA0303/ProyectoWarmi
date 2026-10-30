@@ -24,6 +24,10 @@ import {
 )
 export class NotaVenta extends TimestampedEntity {
   @PrimaryGeneratedColumn({ type: 'integer' }) id_nota_venta: number;
+  @Column({ type: 'uuid', nullable: true, unique: true }) clave_operacion: string | null;
+  @Column({ type: 'varchar', length: 64, nullable: true }) huella_operacion: string | null;
+  @Column({ type: 'integer', nullable: true }) anulado_por: number | null;
+  @Column({ type: 'varchar', length: 255, nullable: true }) motivo_anulacion: string | null;
   @Column({ type: 'integer', nullable: true, unique: true }) id_adquisicion:
     number | null;
   @Column({ type: 'integer', nullable: true }) id_paciente: number | null;
@@ -78,6 +82,7 @@ export class DetalleNotaVenta extends CreatedEntity {
   @Column({ type: 'varchar', length: 30, nullable: true }) unidad_snapshot:
     string | null;
   @Column({ type: 'numeric', precision: 10, scale: 2 }) cantidad: string;
+  @Column({ type: 'numeric', precision: 12, scale: 3, default: 1 }) factor_stock: string;
   @Column({ type: 'numeric', precision: 10, scale: 2 }) precio_unitario: string;
   @Column({ type: 'numeric', precision: 10, scale: 2, default: 0 })
   descuento: string;
@@ -100,6 +105,10 @@ export class DetalleNotaVenta extends CreatedEntity {
 @Check('CHK_pagos_monto', '"monto" > 0')
 export class Pago extends TimestampedEntity {
   @PrimaryGeneratedColumn({ type: 'integer' }) id_pago: number;
+  @Column({ type: 'uuid', nullable: true, unique: true }) clave_operacion: string | null;
+  @Column({ type: 'varchar', length: 64, nullable: true }) huella_operacion: string | null;
+  @Column({ type: 'integer', nullable: true }) anulado_por: number | null;
+  @Column({ type: 'varchar', length: 255, nullable: true }) motivo_anulacion: string | null;
   @Column({ type: 'integer' }) id_nota_venta: number;
   @Column({ type: 'numeric', precision: 10, scale: 2 }) monto: string;
   @Column({ type: 'enum', enum: MetodoPago, enumName: 'metodo_pago' })

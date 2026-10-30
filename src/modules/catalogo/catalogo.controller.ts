@@ -177,6 +177,16 @@ export class CatalogoController {
     return this.service.createService(dto);
   }
 
+  @Get('insumos-opciones')
+  @Permissions('catalogo.leer')
+  @ApiOperation({
+    summary:
+      'Listar insumos activos disponibles para configurar un servicio, sin modificar stock',
+  })
+  productOptions() {
+    return this.service.productOptions();
+  }
+
   @Get('servicios')
   @Permissions('catalogo.leer')
   @ApiOperation({ summary: 'Listar servicios del catálogo' })

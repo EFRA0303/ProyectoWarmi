@@ -73,11 +73,12 @@ export class AdquisicionesController {
   }
   @Patch(':id')
   @Permissions('adquisiciones.actualizar')
-  @ApiOperation({ summary: 'Completar o cancelar una adquisición activa' })
+  @ApiOperation({ summary: 'Cancelar una adquisición con motivo; la finalización es automática al pagar y atender' })
   update(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateAdquisicionDto,
+    @CurrentUser() user: JwtPayload,
   ) {
-    return this.service.update(id, dto);
+    return this.service.update(id, dto, user.sub);
   }
 }

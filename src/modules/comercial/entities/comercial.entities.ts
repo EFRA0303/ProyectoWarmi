@@ -101,6 +101,10 @@ export class PromocionServicio extends TimestampedEntity {
 )
 export class Adquisicion extends TimestampedEntity {
   @PrimaryGeneratedColumn({ type: 'integer' }) id_adquisicion: number;
+  @Column({ type: 'uuid', nullable: true, unique: true }) clave_operacion: string | null;
+  @Column({ type: 'varchar', length: 64, nullable: true }) huella_operacion: string | null;
+  @Column({ type: 'integer', nullable: true }) anulado_por: number | null;
+  @Column({ type: 'varchar', length: 255, nullable: true }) motivo_anulacion: string | null;
   @Column({ type: 'integer' }) id_paciente: number;
   @Column({ type: 'integer', nullable: true }) id_paquete: number | null;
   @Column({ type: 'integer', nullable: true }) id_promocion: number | null;
@@ -139,8 +143,11 @@ export class Adquisicion extends TimestampedEntity {
   '"precio_unitario" >= 0 AND "descuento" >= 0 AND "subtotal" >= 0',
 )
 @Check(
-  'CHK_detalle_adquisicion_calculado',
-  '"subtotal" = ROUND("precio_unitario" * "sesiones_incluidas" - "descuento", 2)',
+  'CHK_detalle_adquisicion_precio_total',
+  `("precio_total_servicio_snapshot" IS NULL AND "sesiones_servicio_snapshot" IS NULL AND "subtotal" = ROUND("precio_unitario" * "sesiones_incluidas" - "descuento", 2)) OR
+   ("precio_total_servicio_snapshot" IS NOT NULL AND "sesiones_servicio_snapshot" IS NOT NULL AND "precio_total_servicio_snapshot" >= 0 AND "sesiones_servicio_snapshot" > 0 AND
+    "precio_unitario" = ROUND("precio_total_servicio_snapshot" / "sesiones_servicio_snapshot", 2) AND
+    "subtotal" = ROUND("precio_total_servicio_snapshot" * "sesiones_incluidas" / "sesiones_servicio_snapshot", 2) - "descuento")`,
 )
 export class DetalleAdquisicion extends CreatedEntity {
   @PrimaryGeneratedColumn({ type: 'integer' }) id_detalle_adquisicion: number;
@@ -149,6 +156,10 @@ export class DetalleAdquisicion extends CreatedEntity {
   @Column({ type: 'varchar', length: 120 }) nombre_servicio_snapshot: string;
   @Column({ type: 'integer' }) sesiones_incluidas: number;
   @Column({ type: 'numeric', precision: 10, scale: 2 }) precio_unitario: string;
+  @Column({ type: 'numeric', precision: 10, scale: 2, nullable: true })
+  precio_total_servicio_snapshot: string | null;
+  @Column({ type: 'integer', nullable: true })
+  sesiones_servicio_snapshot: number | null;
   @Column({ type: 'numeric', precision: 10, scale: 2, default: 0 })
   descuento: string;
   @Column({ type: 'numeric', precision: 10, scale: 2 }) subtotal: string;

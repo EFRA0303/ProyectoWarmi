@@ -10,6 +10,12 @@ import { DomainResourceService } from '../../common/utils/domain-resource.servic
 import { EstadoGeneral } from '../../common/enums/estado-general.enum.js';
 import { CategoriaProducto } from '../catalogo/entities/categoria-producto.entity.js';
 import { optimizeProductImage } from '../../common/utils/product-image.js';
+import { units, decimal } from '../../common/utils/decimal.js';
+import { operationKey } from '../../common/utils/operation-key.js';
+import { localInventoryDate, stockUnits, usableLot, syncStockState } from './inventory-ledger.js';
+import { DetalleNotaVenta, NotaVenta, Pago } from '../ventas/entities/ventas.entities.js';
+import { Adquisicion } from '../comercial/entities/comercial.entities.js';
+import { EstadoNotaVenta, EstadoPago } from '../../common/enums/domain.enums.js';
 import {
   readProductImage,
   removeProductImage,
@@ -107,6 +113,10 @@ export class InventarioService {
   }
   async updateProducto(id: number, d: UpdateProductoDto) {
     const current = await this.productos.one(id);
+    if (d.unidad_medida && d.unidad_medida !== current.unidad_medida) {
+      const movements = await this.db.manager.query(`SELECT 1 FROM movimientos_inventario m JOIN lotes_producto l ON l.id_lote=m.id_lote WHERE l.id_producto=$1 LIMIT 1`, [id]) as unknown[];
+      if (movements.length) throw new BadRequestException('No cambies la unidad de un producto con movimientos históricos. Crea otro producto para una unidad diferente.');
+    }
     const merged = Object.assign({}, current, d);
     await this.validateProduct(merged);
     return this.productos.update(id, this.cleanProduct(d));
@@ -151,13 +161,20 @@ export class InventarioService {
   createLote(d: CreateLoteDto, actor: number) {
     this.loteDates(d);
     return this.db.transaction(async (manager) => {
-      const lot = await this.lotes.create(d, manager);
-      if (Number(d.cantidad_inicial) > 0) {
+      const operation = await operationKey(manager, 'lotes_producto', d.clave_operacion, actor, d);
+      if (operation.existingId) return manager.getRepository(LoteProducto).findOneByOrFail({ id_lote: operation.existingId });
+      const quantity = units(d.cantidad_inicial, 'Cantidad inicial');
+      if (d.costo_unitario !== undefined) units(d.costo_unitario, 'Costo unitario');
+      if (d.fecha_ingreso > localInventoryDate()) throw new BadRequestException('No registres como recibido un lote con fecha futura');
+      if (!(await manager.getRepository(Producto).existsBy({ id_producto: d.id_producto, estado: EstadoGeneral.ACTIVO }))) throw new BadRequestException('El producto no está activo');
+      const state = d.fecha_vencimiento && d.fecha_vencimiento < localInventoryDate() ? EstadoLote.VENCIDO : quantity === 0n ? EstadoLote.AGOTADO : EstadoLote.DISPONIBLE;
+      const lot = await this.lotes.create(Object.assign({}, d, { cantidad_inicial: decimal(quantity), estado: state, huella_operacion: operation.hash }), manager);
+      if (quantity > 0n) {
         await this.movimientos.create(
           {
             id_lote: lot.id_lote,
             tipo: TipoMovimientoInventario.ENTRADA_COMPRA,
-            cantidad: d.cantidad_inicial,
+            cantidad: decimal(quantity),
             registrado_por: actor,
             fecha_movimiento: new Date(`${d.fecha_ingreso}T12:00:00Z`),
             observaciones: 'Stock inicial del lote',
@@ -252,10 +269,16 @@ export class InventarioService {
         'Los consumos y ventas deben registrarse desde su operacion especifica',
       );
     return this.db.transaction(async (manager) => {
+      const operation = await operationKey(manager, 'movimientos_inventario', d.clave_operacion, actor, d);
+      if (operation.existingId) return manager.getRepository(MovimientoInventario).findOneByOrFail({ id_movimiento: operation.existingId });
+      units(d.cantidad, 'Cantidad del movimiento', true);
+      if (!Number.isFinite(new Date(d.fecha_movimiento).getTime()) || new Date(d.fecha_movimiento).getTime() > Date.now() + 300000) throw new BadRequestException('La fecha del movimiento no es válida o está en el futuro');
+      if (!d.observaciones || d.observaciones.trim().length < 5) throw new BadRequestException('Indica el motivo o referencia del movimiento, con al menos cinco caracteres');
       await this.ensureStock(manager, d.id_lote, d.tipo, d.cantidad);
       const movement = await this.movimientos.create(
         Object.assign({}, d, {
           fecha_movimiento: new Date(d.fecha_movimiento),
+          huella_operacion: operation.hash,
           registrado_por: actor,
         }),
         manager,
@@ -305,6 +328,10 @@ export class InventarioService {
   }
   createConsumption(d: CreateConsumoDto, actor: number) {
     return this.db.transaction(async (m) => {
+      const sessions = await m.query(`SELECT estado FROM sesiones WHERE id_sesion=$1 FOR UPDATE`, [d.id_sesion]) as Array<{ estado: string }>;
+      const existing = await m.getRepository(ConsumoSesion).findOneBy({ id_sesion: d.id_sesion, id_lote: d.id_lote });
+      if (existing && units(existing.cantidad) === units(d.cantidad, 'Cantidad consumida', true)) return existing;
+      if (!sessions[0] || sessions[0].estado !== 'EN_CURSO') throw new BadRequestException('Solo se pueden registrar consumos durante una sesión en curso');
       await this.ensureStock(
         m,
         d.id_lote,
@@ -350,6 +377,20 @@ export class InventarioService {
   }
   createSaleOutput(d: CreateSalidaVentaDto, actor: number) {
     return this.db.transaction(async (m) => {
+      const detail = await m.getRepository(DetalleNotaVenta).findOneBy({ id_detalle: d.id_detalle });
+      if (!detail || !detail.id_producto) throw new BadRequestException('El detalle no corresponde a un producto vendido');
+      const known = await m.getRepository(NotaVenta).findOneByOrFail({ id_nota_venta: detail.id_nota_venta });
+      if (known.id_adquisicion) await m.getRepository(Adquisicion).findOne({ where: { id_adquisicion: known.id_adquisicion }, lock: { mode: 'pessimistic_write' } });
+      const note = await m.getRepository(NotaVenta).findOneOrFail({ where: { id_nota_venta: detail.id_nota_venta }, lock: { mode: 'pessimistic_write' } });
+      if (note.estado !== EstadoNotaVenta.EMITIDA) throw new BadRequestException('La nota no está emitida');
+      const existing = await m.getRepository(SalidaProductoVenta).findOneBy({ id_detalle: d.id_detalle, id_lote: d.id_lote });
+      const amount = units(d.cantidad, 'Cantidad entregada', true);
+      if (existing && units(existing.cantidad) === amount) return existing;
+      const payments = await m.getRepository(Pago).findBy({ id_nota_venta: note.id_nota_venta, estado: EstadoPago.REGISTRADO });
+      if (payments.reduce((sum, item) => sum + units(item.monto), 0n) < units(note.total)) throw new BadRequestException('Completa el pago de la nota antes de entregar productos');
+      const outputs = await m.getRepository(SalidaProductoVenta).findBy({ id_detalle: d.id_detalle });
+      const totalUnits = units(detail.cantidad) * units(detail.factor_stock, 'Contenido por presentación', true);
+      if (totalUnits % 100n || amount + outputs.reduce((sum, item) => sum + units(item.cantidad), 0n) > totalUnits / 100n) throw new BadRequestException('La salida supera la cantidad pendiente de entregar');
       await this.ensureStock(
         m,
         d.id_lote,
@@ -406,7 +447,7 @@ export class InventarioService {
       ),
       this.db.manager.query(
       `SELECT l.id_lote, l.id_producto, l.numero_lote,
-              l.fecha_vencimiento::text AS fecha_vencimiento,
+               l.fecha_vencimiento::text AS fecha_vencimiento, l.fecha_ingreso::text AS fecha_ingreso,
               l.estado, p.nombre AS producto, p.unidad_medida,
               COALESCE(SUM(CASE
                 WHEN m.tipo IN ('CONSUMO_SESION','VENTA','AJUSTE_SALIDA','MERMA','VENCIMIENTO') THEN -m.cantidad
@@ -426,9 +467,9 @@ export class InventarioService {
   }
   async operationOptions() {
     const [sessions, saleDetails, lots] = await Promise.all([
-      this.db.manager.query(`SELECT s.id_sesion, s.fecha_sesion, sv.nombre AS servicio, pe.nombre || ' ' || pe.ap_paterno AS paciente FROM sesiones s JOIN tratamientos_paciente t ON t.id_tratamiento = s.id_tratamiento JOIN servicios sv ON sv.id_servicio = t.id_servicio JOIN historiales h ON h.id_historial = t.id_historial JOIN pacientes pa ON pa.id_paciente = h.id_paciente JOIN personas pe ON pe.id_persona = pa.id_persona WHERE s.estado IN ('EN_CURSO','FINALIZADA') ORDER BY s.fecha_sesion DESC`),
-      this.db.manager.query(`SELECT d.id_detalle, d.id_producto, d.descripcion_snapshot AS producto, d.cantidad, n.numero_nota, COALESCE(SUM(spv.cantidad),0)::numeric(10,2) AS cantidad_salida, (d.cantidad-COALESCE(SUM(spv.cantidad),0))::numeric(10,2) AS pendiente FROM detalles_nota_venta d JOIN notas_venta n ON n.id_nota_venta = d.id_nota_venta LEFT JOIN salidas_producto_venta spv ON spv.id_detalle = d.id_detalle WHERE d.id_producto IS NOT NULL AND n.estado = 'EMITIDA' GROUP BY d.id_detalle,n.id_nota_venta HAVING d.cantidad-COALESCE(SUM(spv.cantidad),0)>0 ORDER BY n.fecha_emision DESC`),
-      this.options().then((value) => value.lots),
+      this.db.manager.query(`SELECT s.id_sesion, s.fecha_sesion, sv.nombre AS servicio, pe.nombre || ' ' || pe.ap_paterno AS paciente FROM sesiones s JOIN tratamientos_paciente t ON t.id_tratamiento = s.id_tratamiento JOIN servicios sv ON sv.id_servicio = t.id_servicio JOIN historiales h ON h.id_historial = t.id_historial JOIN pacientes pa ON pa.id_paciente = h.id_paciente JOIN personas pe ON pe.id_persona = pa.id_persona WHERE s.estado = 'EN_CURSO' ORDER BY s.fecha_sesion DESC`),
+      this.db.manager.query(`SELECT d.id_detalle, d.id_producto, d.descripcion_snapshot AS producto, d.cantidad, n.numero_nota, COALESCE(SUM(spv.cantidad),0)::numeric(10,2) AS cantidad_salida, (d.cantidad*d.factor_stock-COALESCE(SUM(spv.cantidad),0))::numeric(10,2) AS pendiente FROM detalles_nota_venta d JOIN notas_venta n ON n.id_nota_venta = d.id_nota_venta LEFT JOIN salidas_producto_venta spv ON spv.id_detalle = d.id_detalle WHERE d.id_producto IS NOT NULL AND n.estado = 'EMITIDA' AND n.total <= COALESCE((SELECT SUM(p.monto) FROM pagos p WHERE p.id_nota_venta=n.id_nota_venta AND p.estado='REGISTRADO'),0) GROUP BY d.id_detalle,n.id_nota_venta HAVING d.cantidad*d.factor_stock-COALESCE(SUM(spv.cantidad),0)>0 ORDER BY n.fecha_emision DESC`),
+      this.options().then((value) => value.lots.filter((lot: { estado: string; fecha_vencimiento: string | null; fecha_ingreso: string; stock_actual: string }) => lot.estado === 'DISPONIBLE' && Number(lot.stock_actual) > 0 && lot.fecha_ingreso <= localInventoryDate() && (!lot.fecha_vencimiento || lot.fecha_vencimiento >= localInventoryDate()))),
     ]);
     return { sessions, saleDetails, lots };
   }
@@ -442,6 +483,7 @@ export class InventarioService {
     return {data,total:Number(count?.total??0),page:q.page,limit:q.limit,key};
   }
   private async validateProduct(d: Partial<CreateProductoDto>) {
+    if (d.precio_venta !== undefined && d.precio_venta !== null) units(d.precio_venta, 'Precio de venta');
     if (!d.es_insumo && !d.es_vendible)
       throw new BadRequestException(
         'El producto debe ser un insumo, un artículo vendible o ambos',
@@ -490,30 +532,25 @@ export class InventarioService {
     type: TipoMovimientoInventario,
     quantity: string,
   ) {
+    const requested = units(quantity, 'Cantidad', true);
+    if ([TipoMovimientoInventario.CONSUMO_SESION, TipoMovimientoInventario.VENTA].includes(type)) await usableLot(manager, lotId);
     const lot = await manager.getRepository(LoteProducto).findOne({
       where: { id_lote: lotId },
       lock: { mode: 'pessimistic_write' },
     });
     if (!lot) throw new BadRequestException('El lote no existe');
-    if (!this.isOutgoing(type)) return;
-    const available = await this.currentStock(manager, lotId);
-    if (available < Number(quantity))
+    if (!this.isOutgoing(type)) {
+      if ([EstadoLote.BAJA, EstadoLote.VENCIDO].includes(lot.estado) || lot.fecha_vencimiento && lot.fecha_vencimiento < localInventoryDate()) throw new BadRequestException('No ingreses stock a un lote dado de baja o vencido');
+      return;
+    }
+    const available = await stockUnits(manager, lotId);
+    if (available < requested)
       throw new BadRequestException(
-        `Stock insuficiente. Disponible: ${available.toFixed(2)}`,
+        `Stock insuficiente. Disponible: ${decimal(available)}`,
       );
   }
   private async currentStock(manager: EntityManager, lotId: number) {
-    const rows = await manager.getRepository(MovimientoInventario).find({
-      where: { id_lote: lotId },
-    });
-    return rows.reduce(
-      (sum, row) =>
-        sum +
-        (this.isOutgoing(row.tipo)
-          ? -Number(row.cantidad)
-          : Number(row.cantidad)),
-      0,
-    );
+    return Number(await stockUnits(manager, lotId)) / 100;
   }
   private isOutgoing(type: TipoMovimientoInventario) {
     return [
@@ -525,14 +562,7 @@ export class InventarioService {
     ].includes(type);
   }
   private async syncLotState(manager: EntityManager, lotId: number) {
-    const lot = await manager.getRepository(LoteProducto).findOneBy({
-      id_lote: lotId,
-    });
-    if (!lot || [EstadoLote.BAJA, EstadoLote.VENCIDO].includes(lot.estado))
-      return;
-    const stock = await this.currentStock(manager, lotId);
-    lot.estado = stock <= 0 ? EstadoLote.AGOTADO : EstadoLote.DISPONIBLE;
-    await manager.getRepository(LoteProducto).save(lot);
+    await syncStockState(manager, lotId);
   }
   private async ensureConsumptionCompatibility(
     manager: EntityManager,
@@ -544,6 +574,7 @@ export class InventarioService {
        FROM sesiones s
        JOIN tratamientos_paciente t ON t.id_tratamiento = s.id_tratamiento
        JOIN lotes_producto l ON l.id_lote = $2
+       JOIN productos p ON p.id_producto=l.id_producto AND p.estado='ACTIVO' AND p.es_insumo
        JOIN servicios_productos sp
          ON sp.id_servicio = t.id_servicio AND sp.id_producto = l.id_producto
        WHERE s.id_sesion = $1`,

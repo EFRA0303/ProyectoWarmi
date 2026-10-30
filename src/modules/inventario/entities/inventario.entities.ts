@@ -73,6 +73,8 @@ export class Producto extends TimestampedEntity {
 )
 export class LoteProducto extends TimestampedEntity {
   @PrimaryGeneratedColumn({ type: 'integer' }) id_lote: number;
+  @Column({ type: 'uuid', nullable: true, unique: true }) clave_operacion: string | null;
+  @Column({ type: 'varchar', length: 64, nullable: true }) huella_operacion: string | null;
   @Column({ type: 'integer' }) id_producto: number;
   @Column({ type: 'varchar', length: 80, nullable: true }) numero_lote:
     string | null;
@@ -117,6 +119,8 @@ export class ServicioProducto extends TimestampedEntity {
 @Check('CHK_movimientos_cantidad', '"cantidad" > 0')
 export class MovimientoInventario extends CreatedEntity {
   @PrimaryGeneratedColumn({ type: 'integer' }) id_movimiento: number;
+  @Column({ type: 'uuid', nullable: true, unique: true }) clave_operacion: string | null;
+  @Column({ type: 'varchar', length: 64, nullable: true }) huella_operacion: string | null;
   @Column({ type: 'integer' }) id_lote: number;
   @Column({
     type: 'enum',
@@ -160,7 +164,6 @@ export class ConsumoSesion extends CreatedEntity {
 }
 
 @Entity('salidas_producto_venta')
-@Unique('UQ_salida_detalle_lote', ['id_detalle', 'id_lote'])
 @Check('CHK_salidas_producto_cantidad', '"cantidad" > 0')
 export class SalidaProductoVenta extends CreatedEntity {
   @PrimaryGeneratedColumn({ type: 'integer' }) id_salida: number;

@@ -57,6 +57,7 @@ export class DomainQueryDto {
   @Type(() => Number) @IsOptional() @IsInt() @Min(1) id_historial?: number;
   @Type(() => Number) @IsOptional() @IsInt() @Min(1) id_servicio?: number;
   @Type(() => Number) @IsOptional() @IsInt() @Min(1) id_tratamiento?: number;
+  @Type(() => Number) @IsOptional() @IsInt() @Min(1) id_sesion?: number;
   @Type(() => Number) @IsOptional() @IsInt() @Min(1) id_nota_venta?: number;
   @Type(() => Number) @IsOptional() @IsInt() @Min(1) id_producto?: number;
   @Type(() => Number) @IsOptional() @IsInt() @Min(1) id_lote?: number;

@@ -1,4 +1,14 @@
-import { IsBoolean, IsInt, IsOptional, Min } from 'class-validator';
+import {
+  ArrayMinSize,
+  ArrayUnique,
+  IsArray,
+  IsBoolean,
+  IsEnum,
+  IsInt,
+  IsOptional,
+  Min,
+} from 'class-validator';
+import { MomentoMedicion } from '../../../common/enums/momento-medicion.enum.js';
 
 export class AssignServicioMedidaDto {
   @IsInt()
@@ -8,4 +18,11 @@ export class AssignServicioMedidaDto {
   @IsOptional()
   @IsBoolean()
   obligatorio?: boolean;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayUnique()
+  @IsEnum(MomentoMedicion, { each: true })
+  momentos?: MomentoMedicion[];
 }
