@@ -8,6 +8,7 @@ import {
   IsNumberString,
   IsOptional,
   IsString,
+  Matches,
   MaxLength,
   Min,
 } from 'class-validator';
@@ -25,12 +26,14 @@ export class CreateProductoDto {
   @IsOptional() @IsString() @MaxLength(255) descripcion?: string | null;
   @IsString() @MaxLength(30) unidad_medida: string;
   @IsString() @MaxLength(50) presentacion: string;
-  @IsNumberString() contenido_presentacion: string;
+  @Matches(/^[1-9]\d*$/, { message: 'contenido_presentacion debe ser un entero mayor a cero' })
+  contenido_presentacion: string;
   @IsOptional() @IsNumberString() precio_venta?: string | null;
   @IsOptional() @IsString() @MaxLength(500) imagen_url?: string;
   @IsOptional() @IsBoolean() es_insumo?: boolean;
   @IsOptional() @IsBoolean() es_vendible?: boolean;
-  @IsOptional() @IsNumberString() stock_minimo?: string;
+  @IsOptional() @Matches(/^\d+$/, { message: 'stock_minimo debe ser un entero' })
+  stock_minimo?: string;
   @IsOptional() @IsEnum(EstadoGeneral) estado?: EstadoGeneral;
 }
 export class UpdateProductoDto extends PartialType(CreateProductoDto) {}

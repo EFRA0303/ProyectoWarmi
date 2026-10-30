@@ -186,7 +186,10 @@ export class InventarioService {
     const limit = parameter(q.limit);
     const offset = parameter((q.page - 1) * q.limit);
     const data = await this.db.manager.query(
-      `SELECT l.*, p.nombre AS producto, p.unidad_medida,
+      `SELECT l.*,
+              l.fecha_ingreso::text AS fecha_ingreso,
+              l.fecha_vencimiento::text AS fecha_vencimiento,
+              p.nombre AS producto, p.unidad_medida,
               COALESCE(SUM(CASE
                 WHEN m.tipo IN ('CONSUMO_SESION','VENTA','AJUSTE_SALIDA','MERMA','VENCIMIENTO') THEN -m.cantidad
                 ELSE m.cantidad END), 0)::numeric(12,2) AS stock_actual
@@ -402,7 +405,8 @@ export class InventarioService {
        FROM productos WHERE estado = 'ACTIVO' ORDER BY nombre`,
       ),
       this.db.manager.query(
-      `SELECT l.id_lote, l.id_producto, l.numero_lote, l.fecha_vencimiento,
+      `SELECT l.id_lote, l.id_producto, l.numero_lote,
+              l.fecha_vencimiento::text AS fecha_vencimiento,
               l.estado, p.nombre AS producto, p.unidad_medida,
               COALESCE(SUM(CASE
                 WHEN m.tipo IN ('CONSUMO_SESION','VENTA','AJUSTE_SALIDA','MERMA','VENCIMIENTO') THEN -m.cantidad

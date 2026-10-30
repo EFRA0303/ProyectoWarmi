@@ -61,6 +61,8 @@ export class CreateEmpresaDto {
   moneda?: string;
   @IsOptional() @IsString() @MaxLength(180) eslogan_principal?: string;
   @IsOptional() @IsString() @MaxLength(180) titulo_login?: string;
+  @IsOptional() @IsString() @MaxLength(40) subtitulo_panel?: string;
+  @IsOptional() @IsString() @MaxLength(60) texto_superior_login?: string;
   @IsOptional() @IsString() @MaxLength(320) descripcion_corta?: string;
 }
 export class UpdateEmpresaDto extends PartialType(CreateEmpresaDto) {}

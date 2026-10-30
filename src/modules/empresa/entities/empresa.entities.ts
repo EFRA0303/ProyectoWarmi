@@ -38,6 +38,10 @@ export class Empresa extends TimestampedEntity {
     string | null;
   @Column({ type: 'varchar', length: 180, nullable: true }) titulo_login:
     string | null;
+  @Column({ type: 'varchar', length: 40, nullable: true }) subtitulo_panel:
+    string | null;
+  @Column({ type: 'varchar', length: 60, nullable: true })
+  texto_superior_login: string | null;
   @Column({ type: 'varchar', length: 320, nullable: true }) descripcion_corta:
     string | null;
   @Column({ type: 'varchar', length: 255, nullable: true })

@@ -76,6 +76,8 @@ export class EmpresaService {
         logo_url: true,
         eslogan_principal: true,
         titulo_login: true,
+        subtitulo_panel: true,
+        texto_superior_login: true,
         descripcion_corta: true,
         imagen_fondo_login_url: true,
         imagen_fondo_panel_login_url: true,
@@ -88,6 +90,8 @@ export class EmpresaService {
       logo_disponible: Boolean(company?.logo_url),
       eslogan_principal: company?.eslogan_principal?.trim() || null,
       titulo_login: company?.titulo_login?.trim() || null,
+      subtitulo_panel: company?.subtitulo_panel?.trim() || null,
+      texto_superior_login: company?.texto_superior_login?.trim() || null,
       descripcion_corta: company?.descripcion_corta?.trim() || null,
       fondo_login_disponible: Boolean(company?.imagen_fondo_login_url),
       fondo_panel_login_disponible: Boolean(
